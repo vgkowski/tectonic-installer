@@ -13,20 +13,15 @@ import (
 	"github.com/toqueteos/webbrowser"
 
 	"github.com/coreos/tectonic-installer/installer/api"
-	"github.com/coreos/tectonic-installer/installer/pkg/terraform"
 )
 
 func main() {
-	// TerraForm entrypoint.
-	if os.Getenv("TF_PLUGIN_MAGIC_COOKIE") != "" {
-		terraform.ServePlugin(os.Args[1])
-		return
-	}
 
 	flags := struct {
 		address             string
 		logLevel            string
 		platforms           platformsValue
+		secretsDir          string
 		cookieSigningSecret string
 		disableSecureCookie bool
 		openBrowser         bool
@@ -53,6 +48,8 @@ func main() {
 	flags.platforms = platformsValue{names: knownPlatforms}
 	flag.Var(&flags.platforms, "platforms", "comma separated list of platforms to support")
 
+	flag.StringVar(&flags.secretsDir, "secrets-dir", "", "search this directory for Tectonic license and pull secret files rather than the installer executable directory")
+
 	// parse command-line and environment variable arguments
 	flag.Parse()
 	if err := flagutil.SetFlagsFromEnv(flag.CommandLine, "INSTALLER"); err != nil {
@@ -77,6 +74,7 @@ func main() {
 		AssetDir:            flags.assetDir,
 		DevMode:             flags.devMode,
 		Platforms:           flags.platforms.names,
+		SecretsDir:          flags.secretsDir,
 		CookieSigningSecret: flags.cookieSigningSecret,
 		DisableSecureCookie: flags.disableSecureCookie,
 	})

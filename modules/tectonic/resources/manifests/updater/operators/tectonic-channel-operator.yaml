@@ -1,4 +1,4 @@
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
   name: tectonic-channel-operator
@@ -36,13 +36,19 @@ spec:
         volumeMounts:
         - name: certs
           mountPath: /etc/ssl/certs
-      restartPolicy: Always
       imagePullSecrets:
       - name: coreos-pull-secret
+      nodeSelector:
+        node-role.kubernetes.io/master: ""
+      restartPolicy: Always
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
+      tolerations:
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
       volumes:
       - name: certs
         hostPath:
-          path: /usr/share/ca-certificates
+          path: /etc/ssl/certs

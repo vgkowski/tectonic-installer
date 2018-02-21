@@ -6,8 +6,8 @@ import _ from 'lodash';
 import * as awsActions from '../aws-actions';
 import { AWS_HOSTED_ZONE_ID, CLUSTER_SUBDOMAIN } from '../cluster-config';
 import { Alert } from './alert';
-import { TectonicGA } from '../tectonic-ga';
 import { toExtraData } from '../utils';
+import { DocsA } from './ui';
 
 const stateToProps = ({aws, clusterConfig}) => {
   const hostedZoneID = clusterConfig[AWS_HOSTED_ZONE_ID];
@@ -69,10 +69,10 @@ class DomainInfo extends React.Component {
           Public NS records for {domain} do not match Route 53. You should update your domain registrar's NS records to match.
           <br /><br />
           Public:
-          <pre style={preStyle}>{publicNS.join("\n")}</pre>
+          <pre style={preStyle}>{publicNS.join('\n')}</pre>
           <br />
           Route 53:
-          <pre style={preStyle}>{awsNS.join("\n")}</pre>
+          <pre style={preStyle}>{awsNS.join('\n')}</pre>
         </Alert>);
       }
     }
@@ -82,7 +82,7 @@ class DomainInfo extends React.Component {
       warnings.push(<Alert key="soa">
         <b>{domain}'s SOA TTL is {soaTTL} seconds and its SOA minimum TTL is {minimumTTL} seconds.</b>&nbsp;
         The SOA record TTL and minimum TTL values determine how long to cache NXDOMAIN responses for. Installation cannot complete until {clusterSubdomain}-k8s.{domain} resolves.&nbsp;
-        <a href="https://coreos.com/tectonic/docs/latest/install/aws/troubleshooting.html#route53-dns-resolution" onClick={() => TectonicGA.sendDocsEvent('aws-tf')} target="_blank">Read more here</a>.
+        <DocsA path="/install/aws/troubleshooting.html#route53-dns-resolution">Read more here</DocsA>.
       </Alert>);
     }
 

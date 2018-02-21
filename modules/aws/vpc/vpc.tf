@@ -7,7 +7,7 @@ resource "aws_vpc" "new_vpc" {
   enable_dns_support   = true
 
   tags = "${merge(map(
-      "Name", "${var.cluster_name}-vpc",
+      "Name", "${var.cluster_name}.${var.base_domain}",
       "kubernetes.io/cluster/${var.cluster_name}", "shared",
       "tectonicClusterID", "${var.cluster_id}"
     ), var.extra_tags)}"
@@ -22,4 +22,9 @@ data "aws_vpc" "cluster_vpc" {
   # This is tracked upstream: https://github.com/hashicorp/hil/issues/50
   #
   id = "${var.external_vpc_id == "" ? join(" ", aws_vpc.new_vpc.*.id) : var.external_vpc_id }"
+}
+
+locals {
+  master_subnet_ids = ["${split(",", var.external_vpc_id == "" ? join(",", aws_subnet.master_subnet.*.id) :  join(",", data.aws_subnet.external_master.*.id))}"]
+  worker_subnet_ids = ["${split(",", var.external_vpc_id == "" ? join(",", aws_subnet.worker_subnet.*.id) :  join(",", data.aws_subnet.external_worker.*.id))}"]
 }

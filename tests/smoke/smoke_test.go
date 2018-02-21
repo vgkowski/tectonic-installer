@@ -13,19 +13,22 @@ import (
 
 const (
 	// kubeconfigEnv is the environment variable that is checked for a the kubeconfig path to be loaded.
-	kubeconfigEnv = "TEST_KUBECONFIG"
+	kubeconfigEnv = "SMOKE_KUBECONFIG"
+	// apiServerSelector is the pod label selector for the apiserver.
+	apiServerSelector = "k8s-app=kube-apiserver"
+	// kubeSystemNamespace is the namespace for k8s.
+	kubeSystemNamespace = "kube-system"
+	// tectonicSystemNamespace is the namespace for Tectonic.
+	tectonicSystemNamespace = "tectonic-system"
 )
 
 var (
 	// runClusterTests is used as a flag to control whether or not to run cluster tests.
 	runClusterTests bool
-	// runQATests is used as a flag to control whether or not to run QA tests.
-	runQATests bool
 )
 
 func TestMain(m *testing.M) {
 	flag.BoolVar(&runClusterTests, "cluster", false, "run cluster tests (default false)")
-	flag.BoolVar(&runQATests, "qa", false, "run qa-checklist tests (default false)")
 	flag.Parse()
 	os.Exit(m.Run())
 }
@@ -36,9 +39,6 @@ func Test(t *testing.T) {
 	t.Run("Common", testCommon)
 	if runClusterTests {
 		t.Run("Cluster", testCluster)
-	}
-	if runQATests {
-		t.Run("QA", testQA)
 	}
 }
 

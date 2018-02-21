@@ -7,13 +7,25 @@ variable "resource_group_name" {
   type = "string"
 }
 
+variable "cluster_id" {
+  type = "string"
+}
+
 // VM Size name
 variable "vm_size" {
   type = "string"
 }
 
 // Storage account type
-variable "storage_account_type" {
+variable "storage_type" {
+  type = "string"
+}
+
+variable "storage_id" {
+  type = "string"
+}
+
+variable "root_volume_size" {
   type = "string"
 }
 
@@ -46,7 +58,11 @@ variable "versions" {
   type        = "map"
 }
 
-variable "cl_channel" {
+variable "container_linux_channel" {
+  type = "string"
+}
+
+variable "container_linux_version" {
   type = "string"
 }
 
@@ -56,38 +72,41 @@ variable "const_internal_node_names" {
   description = "(internal) The list of hostnames assigned to etcd member nodes."
 }
 
-variable "tls_enabled" {
-  default = false
-}
-
-variable "tls_ca_crt_pem" {
-  default = ""
-}
-
-variable "tls_client_key_pem" {
-  default = ""
-}
-
-variable "tls_client_crt_pem" {
-  default = ""
-}
-
-variable "tls_server_key_pem" {
-  default = ""
-}
-
-variable "tls_server_crt_pem" {
-  default = ""
-}
-
-variable "tls_peer_key_pem" {
-  default = ""
-}
-
-variable "tls_peer_crt_pem" {
-  default = ""
-}
-
 variable "container_image" {
   type = "string"
+}
+
+variable "extra_tags" {
+  type = "map"
+}
+
+variable "ign_etcd_dropin_id_list" {
+  type = "list"
+}
+
+variable "fault_domains" {
+  type = "string"
+}
+
+variable "ign_etcd_crt_id_list" {
+  type = "list"
+}
+
+variable "ign_profile_env_id" {
+  type    = "string"
+  default = ""
+}
+
+variable "ign_systemd_default_env_id" {
+  type    = "string"
+  default = ""
+}
+
+variable "boot_diagnostics" {
+  type = "string"
+}
+
+variable "storage_name_boot_diag" {
+  type    = "string"
+  default = ""
 }

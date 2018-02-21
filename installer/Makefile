@@ -7,7 +7,7 @@ TLS_CERTS=../tests/smoke/bare-metal/fake-creds
 MATCHBOX_ASSETS_PATH=/tmp/assets
 MATCHBOX_IMAGES_PATH=/tmp/images
 MATCHBOX_OPTS=-data-path=$(MATCHBOX_IMAGES_PATH) -assets-path=$(MATCHBOX_ASSETS_PATH) -cert-file=$(TLS_CERTS)/server.crt -key-file=$(TLS_CERTS)/server.key -ca-file=$(TLS_CERTS)/ca.crt
-COREOS_VERSION=1353.8.0
+COREOS_VERSION=1520.9.0
 REPO=github.com/coreos/tectonic-installer/installer
 
 # Wrapper around find. Works with filenamess containing spaces.
@@ -71,17 +71,6 @@ shellcheck: $(SHELL_FILES)
 .PHONY: dirtycheck
 dirtycheck:
 	@if git status --short | grep 'yarn.lock' > /dev/null; then echo "outdated yarn.lock (commit it to fix)"; exit 1; fi
-
-.PHONY: dist
-dist: release-bins
-	./scripts/release/make_release_tarball.sh
-
-.PHONY: release
-release: release-bins
-	./scripts/release/upload_installer_bins.sh
-	./scripts/release/make_release_tarball.sh
-	./scripts/release/upload_release_tarball.sh
-	./scripts/release/make_github_release.sh
 
 .PHONY: license-parse
 license-parse:

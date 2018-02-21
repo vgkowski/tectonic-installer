@@ -1,3 +1,49 @@
+terraform {
+  required_version = ">= 0.10.7"
+}
+
+provider "archive" {
+  version = "1.0.0"
+}
+
+provider "external" {
+  version = "1.0.0"
+}
+
+provider "ignition" {
+  version = "1.0.0"
+}
+
+provider "local" {
+  version = "1.0.0"
+}
+
+provider "null" {
+  version = "1.0.0"
+}
+
+provider "random" {
+  version = "1.0.0"
+}
+
+provider "template" {
+  version = "1.0.0"
+}
+
+provider "tls" {
+  version = "1.0.1"
+}
+
+locals {
+  // The total amount of public CA certificates present in Tectonic.
+  // That is all custom CAs + kube CA + etcd CA + ingress CA
+  // This is a local constant, which needs to be dependency inject because TF cannot handle length() on computed values,
+  // see https://github.com/hashicorp/terraform/issues/10857#issuecomment-268289775.
+  tectonic_ca_count = "${length(var.tectonic_custom_ca_pem_list) + 3}"
+
+  tectonic_http_proxy_enabled = "${length(var.tectonic_http_proxy_address) > 0}"
+}
+
 variable "tectonic_config_version" {
   description = <<EOF
 (internal) This declares the version of the global configuration variables.
@@ -16,52 +62,47 @@ EOF
   default = "/^([^/]+/[^/]+/[^/]+):(.*)$/"
 }
 
-terraform {
-  required_version = ">= 0.9.6"
-}
-
 variable "tectonic_container_images" {
   description = "(internal) Container images to use"
   type        = "map"
 
   default = {
-    hyperkube                       = "quay.io/coreos/hyperkube:v1.7.1_coreos.0"
-    pod_checkpointer                = "quay.io/coreos/pod-checkpointer:980d1b4b4b8374240c240fb0f85e3a8d9c51663c"
-    bootkube                        = "quay.io/coreos/bootkube:v0.5.0"
-    console                         = "quay.io/coreos/tectonic-console:v1.8.0"
-    identity                        = "quay.io/coreos/dex:v2.5.0"
-    container_linux_update_operator = "quay.io/coreos/container-linux-update-operator:v0.2.2"
-    kube_version_operator           = "quay.io/coreos/kube-version-operator:v1.6.7"
-    tectonic_channel_operator       = "quay.io/coreos/tectonic-channel-operator:0.3.6"
-    node_agent                      = "quay.io/coreos/node-agent:61288ac4d06d304e6947c22cfec4caf1a10ddaa1"
-    prometheus_operator             = "quay.io/coreos/prometheus-operator:v0.11.0"
-    tectonic_monitoring_auth        = "quay.io/coreos/tectonic-monitoring-auth:v0.0.1"
-    prometheus                      = "quay.io/prometheus/prometheus:v1.7.1"
-    alertmanager                    = "quay.io/prometheus/alertmanager:v0.7.1"
-    tectonic_prometheus_operator    = "quay.io/coreos/tectonic-prometheus-operator:v1.4.0"
-    node_exporter                   = "quay.io/prometheus/node-exporter:v0.14.0"
-    kube_state_metrics              = "quay.io/coreos/kube-state-metrics:v0.5.0"
-    config_reload                   = "quay.io/coreos/configmap-reload:v0.0.1"
-    prometheus_config_reload        = "quay.io/coreos/prometheus-config-reloader:v0.0.2"
-    heapster                        = "gcr.io/google_containers/heapster:v1.4.0"
-    addon_resizer                   = "gcr.io/google_containers/addon-resizer:2.0"
-    stats_emitter                   = "quay.io/coreos/tectonic-stats:6e882361357fe4b773adbf279cddf48cb50164c1"
-    stats_extender                  = "quay.io/coreos/tectonic-stats-extender:487b3da4e175da96dabfb44fba65cdb8b823db2e"
-    error_server                    = "quay.io/coreos/tectonic-error-server:1.0"
-    ingress_controller              = "gcr.io/google_containers/nginx-ingress-controller:0.9.0-beta.11"
-    kubedns                         = "gcr.io/google_containers/k8s-dns-kube-dns-amd64:1.14.4"
-    kubednsmasq                     = "gcr.io/google_containers/k8s-dns-dnsmasq-nanny-amd64:1.14.4"
-    kubedns_sidecar                 = "gcr.io/google_containers/k8s-dns-sidecar-amd64:1.14.4"
-    flannel                         = "quay.io/coreos/flannel:v0.8.0-amd64"
-    flannel_cni                     = "quay.io/coreos/flannel-cni:0.1.0"
-    etcd                            = "quay.io/coreos/etcd:v3.1.8"
-    etcd_operator                   = "quay.io/coreos/etcd-operator:v0.4.2"
-    kenc                            = "quay.io/coreos/kenc:0.0.2"
-    awscli                          = "quay.io/coreos/awscli:025a357f05242fdad6a81e8a6b520098aa65a600"
-    kube_version                    = "quay.io/coreos/kube-version:0.1.0"
-    tectonic_etcd_operator          = "quay.io/coreos/tectonic-etcd-operator:v0.0.1"
-    calico                          = "quay.io/calico/node:v1.3.0"
-    calico_cni                      = "quay.io/calico/cni:v1.9.1-4-g23fcd5f"
+    addon_resizer                = "gcr.io/google_containers/addon-resizer:2.1"
+    awscli                       = "quay.io/coreos/awscli:025a357f05242fdad6a81e8a6b520098aa65a600"
+    gcloudsdk                    = "google/cloud-sdk:178.0.0-alpine"
+    bootkube                     = "quay.io/coreos/bootkube:v0.10.0"
+    etcd                         = "quay.io/coreos/etcd:v3.2.14"
+    hyperkube                    = "quay.io/coreos/hyperkube:v1.9.1_coreos.0"
+    kube_core_renderer           = "quay.io/coreos/kube-core-renderer-dev:6c49ce4da9fc36966812381891b4f558aa53097b"
+    kube_core_operator           = "quay.io/coreos/kube-core-operator:beryllium-m1"
+    tectonic_channel_operator    = "quay.io/coreos/tectonic-channel-operator:0.6.2"
+    tectonic_prometheus_operator = "quay.io/coreos/tectonic-prometheus-operator:v1.9.2"
+    tectonic_cluo_operator       = "quay.io/coreos/tectonic-cluo-operator:v0.3.1"
+    tectonic_torcx               = "quay.io/coreos/tectonic-torcx:v0.2.1"
+    kubernetes_addon_operator    = "quay.io/coreos/kubernetes-addon-operator:beryllium-m1"
+    tectonic_alm_operator        = "quay.io/coreos/tectonic-alm-operator:v0.3.1"
+    tectonic_utility_operator    = "quay.io/coreos/tectonic-utility-operator:beryllium-m1"
+    tectonic_network_operator    = "quay.io/coreos/tectonic-network-operator:beryllium-m1"
+  }
+}
+
+variable "tectonic_container_base_images" {
+  description = "(internal) Base images of the components to use"
+  type        = "map"
+
+  default = {
+    tectonic_monitoring_auth = "quay.io/coreos/tectonic-monitoring-auth"
+    config_reload            = "quay.io/coreos/configmap-reload"
+    addon_resizer            = "quay.io/coreos/addon-resizer"
+    kube_state_metrics       = "quay.io/coreos/kube-state-metrics"
+    grafana                  = "quay.io/coreos/monitoring-grafana"
+    grafana_watcher          = "quay.io/coreos/grafana-watcher"
+    prometheus_operator      = "quay.io/coreos/prometheus-operator"
+    prometheus_config_reload = "quay.io/coreos/prometheus-config-reloader"
+    prometheus               = "quay.io/prometheus/prometheus"
+    alertmanager             = "quay.io/prometheus/alertmanager"
+    node_exporter            = "quay.io/prometheus/node-exporter"
+    kube_rbac_proxy          = "quay.io/coreos/kube-rbac-proxy"
   }
 }
 
@@ -70,14 +111,10 @@ variable "tectonic_versions" {
   type        = "map"
 
   default = {
-    container_linux = "1353.8.0"
-    etcd            = "3.1.8"
-    prometheus      = "v1.7.1"
-    alertmanager    = "v0.7.1"
-    monitoring      = "1.4.0"
-    kubernetes      = "1.7.1+tectonic.1"
-    tectonic        = "1.7.1-tectonic.1"
-    tectonic-etcd   = "0.0.1"
+    monitoring = "1.9.2"
+    tectonic   = "1.8.4-tectonic.2"
+    cluo       = "0.3.1"
+    alm        = "0.3.1"
   }
 }
 
@@ -85,14 +122,17 @@ variable "tectonic_service_cidr" {
   type    = "string"
   default = "10.3.0.0/16"
 
-  description = "This declares the IP range to assign Kubernetes service cluster IPs in CIDR notation. The maximum size of this IP range is /12"
+  description = <<EOF
+(optional) This declares the IP range to assign Kubernetes service cluster IPs in CIDR notation.
+The maximum size of this IP range is /12
+EOF
 }
 
 variable "tectonic_cluster_cidr" {
   type    = "string"
   default = "10.2.0.0/16"
 
-  description = "This declares the IP range to assign Kubernetes pod IPs in CIDR notation."
+  description = "(optional) This declares the IP range to assign Kubernetes pod IPs in CIDR notation."
 }
 
 variable "tectonic_master_count" {
@@ -123,7 +163,7 @@ variable "tectonic_etcd_count" {
 The number of etcd nodes to be created.
 If set to zero, the count of etcd nodes will be determined automatically.
 
-Note: This is currently only supported on AWS.
+Note: This is not supported on bare metal.
 EOF
 }
 
@@ -131,22 +171,14 @@ variable "tectonic_etcd_servers" {
   description = <<EOF
 (optional) List of external etcd v3 servers to connect with (hostnames/IPs only).
 Needs to be set if using an external etcd cluster.
+Note: If this variable is defined, the installer will not create self-signed certs.
+To provide a CA certificate to trust the etcd servers, set "tectonic_etcd_ca_cert_path".
 
 Example: `["etcd1", "etcd2", "etcd3"]`
 EOF
 
   type    = "list"
-  default = [""]
-}
-
-variable "tectonic_etcd_tls_enabled" {
-  default = true
-
-  description = <<EOF
-(optional) If set to `true`, TLS secure communication for self-provisioned etcd. will be used.
-
-Note: If `tectonic_experimental` is set to `true` this variable has no effect, because the experimental self-hosted etcd always uses TLS.
-EOF
+  default = []
 }
 
 variable "tectonic_etcd_ca_cert_path" {
@@ -157,7 +189,7 @@ variable "tectonic_etcd_ca_cert_path" {
 (optional) The path of the file containing the CA certificate for TLS communication with etcd.
 
 Note: This works only when used in conjunction with an external etcd cluster.
-If set, the variables `tectonic_etcd_servers`, `tectonic_etcd_client_cert_path`, and `tectonic_etcd_client_key_path` must also be set.
+If set, the variable `tectonic_etcd_servers` must also be set.
 EOF
 }
 
@@ -196,6 +228,11 @@ Example: `openstack.dev.coreos.systems`.
 
 Note: This field MUST be set manually prior to creating the cluster.
 This applies only to cloud platforms.
+
+[Azure-specific NOTE]
+To use Azure-provided DNS, `tectonic_base_domain` should be set to `""`
+If using DNS records, ensure that `tectonic_base_domain` is set to a properly configured external DNS zone.
+Instructions for configuring delegated domains for Azure DNS can be found here: https://docs.microsoft.com/en-us/azure/dns/dns-delegate-domain-azure-dns
 EOF
 }
 
@@ -217,8 +254,15 @@ variable "tectonic_pull_secret_path" {
 
   description = <<EOF
 The path the pull secret file in JSON format.
+This is known to be a "Docker pull secret" as produced by the docker login [1] command.
+A sample JSON content is shown in [2].
+You can download the pull secret from your Account overview page at [3].
 
-Note: This field MUST be set manually prior to creating the cluster unless `tectonic_vanilla_k8s` is set to `true`.
+[1] https://docs.docker.com/engine/reference/commandline/login/
+
+[2] https://coreos.com/os/docs/latest/registry-authentication.html#manual-registry-auth-setup
+
+[3] https://account.coreos.com/overview
 EOF
 }
 
@@ -228,19 +272,31 @@ variable "tectonic_license_path" {
 
   description = <<EOF
 The path to the tectonic licence file.
+You can download the Tectonic license file from your Account overview page at [1].
 
-Note: This field MUST be set manually prior to creating the cluster unless `tectonic_vanilla_k8s` is set to `true`.
+[1] https://account.coreos.com/overview
 EOF
 }
 
-variable "tectonic_cl_channel" {
+variable "tectonic_container_linux_channel" {
   type    = "string"
   default = "stable"
 
   description = <<EOF
-The Container Linux update channel.
+(optional) The Container Linux update channel.
 
 Examples: `stable`, `beta`, `alpha`
+EOF
+}
+
+variable "tectonic_container_linux_version" {
+  type    = "string"
+  default = "latest"
+
+  description = <<EOF
+The Container Linux version to use. Set to `latest` to select the latest available version for the selected update channel.
+
+Examples: `latest`, `1465.6.0`
 EOF
 }
 
@@ -252,7 +308,7 @@ variable "tectonic_update_server" {
 
 variable "tectonic_update_channel" {
   type        = "string"
-  default     = "tectonic-1.6"
+  default     = "tectonic-1.8-production"
   description = "(internal) The Tectonic Omaha update channel"
 }
 
@@ -266,22 +322,22 @@ variable "tectonic_admin_email" {
   type = "string"
 
   description = <<EOF
-The e-mail address used to:
+(internal) The e-mail address used to:
 1. login as the admin user to the Tectonic Console.
 2. generate DNS zones for some providers.
 
-Note: This field MUST be set manually prior to creating the cluster.
+Note: This field MUST be in all lower-case e-mail address format and set manually prior to creating the cluster.
 EOF
 }
 
-variable "tectonic_admin_password_hash" {
+variable "tectonic_admin_password" {
   type = "string"
 
   description = <<EOF
-The bcrypt hash of admin user password to login to the Tectonic Console.
-Use the bcrypt-hash tool (https://github.com/coreos/bcrypt-tool/releases/tag/v1.0.0) to generate it.
+(internal) The admin user password to login to the Tectonic Console.
 
-Note: This field MUST be set manually prior to creating the cluster.
+Note: This field MUST be set manually prior to creating the cluster. Backslashes and double quotes must
+also be escaped.
 EOF
 }
 
@@ -311,31 +367,26 @@ variable "tectonic_ca_key_alg" {
 
   description = <<EOF
 (optional) The algorithm used to generate tectonic_ca_key.
-The default value is currently recommend.
+The default value is currently recommended.
 This field is mandatory if `tectonic_ca_cert` is set.
 EOF
 }
 
-variable "tectonic_vanilla_k8s" {
-  default = false
+variable "tectonic_tls_validity_period" {
+  type    = "string"
+  default = "26280"
 
   description = <<EOF
-If set to true, a vanilla Kubernetes cluster will be deployed, omitting any Tectonic assets.
-EOF
-}
-
-variable "tectonic_experimental" {
-  default = false
-
-  description = <<EOF
-If set to true, experimental Tectonic assets are being deployed.
+Validity period of the self-signed certificates (in hours).
+Default is 3 years.
+This setting is ignored if user provided certificates are used.
 EOF
 }
 
 variable "tectonic_stats_url" {
   type        = "string"
   default     = "https://stats-collector.tectonic.com"
-  description = "The Tectonic statistics collection URL to which to report."
+  description = "(internal) The Tectonic statistics collection URL to which to report."
 }
 
 variable "tectonic_ddns_server" {
@@ -382,12 +433,90 @@ Specifies the RFC2136 Dynamic DNS server key secret.
 EOF
 }
 
-variable "tectonic_calico_network_policy" {
-  default = false
+variable "tectonic_networking" {
+  default = "canal"
 
   description = <<EOF
-[ALPHA] If set to true, calico network policy support will be deployed.
-WARNING: Enabling an alpha feature means that future updates may become unsupported.
-This should only be enabled on clusters that are meant to be short-lived to begin validating the alpha feature.
+(optional) Configures the network to be used in Tectonic. One of the following values can be used:
+
+- "flannel": enables overlay networking only. This is implemented by flannel using VXLAN.
+
+- "canal": enables overlay networking including network policy. Overlay is implemented by flannel using VXLAN. Network policy is implemented by Calico.
+
+- "calico-ipip": [ALPHA] enables BGP based networking. Routing and network policy is implemented by Calico. Note this has been tested on baremetal installations only.
+
+- "none": disables the installation of any Pod level networking layer provided by Tectonic. By setting this value, users are expected to deploy their own solution to enable network connectivity for Pods and Services.
+EOF
+}
+
+variable "tectonic_bootstrap_upgrade_cl" {
+  type        = "string"
+  default     = "true"
+  description = "(internal) Whether to trigger a ContainerLinux upgrade on node bootstrap."
+}
+
+variable "tectonic_kubelet_debug_config" {
+  type    = "string"
+  default = ""
+
+  description = "(internal) debug flags for the kubelet (used in CI only)"
+}
+
+variable "tectonic_custom_ca_pem_list" {
+  type    = "list"
+  default = []
+
+  description = <<EOF
+(optional) A list of PEM encoded CA files that will be installed in /etc/ssl/certs on etcd, master, and worker nodes.
+EOF
+}
+
+variable "tectonic_iscsi_enabled" {
+  type        = "string"
+  default     = "false"
+  description = "(optional) Start iscsid.service to enable iscsi volume attachment."
+}
+
+variable "tectonic_http_proxy_address" {
+  type    = "string"
+  default = ""
+
+  description = <<EOF
+(optional) HTTP proxy address.
+
+Example: `http://myproxy.example.com`
+EOF
+}
+
+variable "tectonic_https_proxy_address" {
+  type    = "string"
+  default = ""
+
+  description = <<EOF
+(optional) HTTPS proxy address.
+
+Example: `http://myproxy.example.com`
+EOF
+}
+
+variable "tectonic_no_proxy" {
+  type    = "list"
+  default = []
+
+  description = <<EOF
+(optional) List of local endpoints that will not use HTTP proxy.
+
+Example: `["127.0.0.1","localhost",".example.com","10.3.0.1"]`
+EOF
+}
+
+variable "tectonic_enable_boot_diagnostics" {
+  type    = "string"
+  default = "false"
+
+  description = <<EOF
+(optional) Enable boot diagnostics for example the boot logs.
+It is only supported for Azure cloud provider.
+Used to collect the boot logs for debug purposes.
 EOF
 }

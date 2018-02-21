@@ -1,38 +1,34 @@
-const awsPlatformPageCommands = {
-  selectPlatform() {
-    return this
-      .waitForElementVisible('select#platformType', 100000)
-      .click('@awsPlatform')
-      .click('@nextStep');
-  },
-};
+const wizard = require('../utils/wizard');
 
-const bareMetalplatformPageCommands = {
-  selectBareMetalPlatform() {
-    return this
-      .waitForElementVisible('select#platformType', 100000)
-      .click('@bareMetalPlatform')
-      .click('@nextStep');
+const platformPageCommands = {
+  test (platformEl) {
+    this.expect.element('select#platformType').to.be.visible.before(60000);
+
+    // Platform should default to AWS
+    this.expect.element('select#platformType').to.have.value.that.equals('aws-tf');
+    this.expect.element(wizard.nextStep).to.be.present;
+
+    this.selectOption('@awsAdvanced');
+    this.expect.element(wizard.nextStep).to.not.be.present;
+    this.selectOption('@azureAdvanced');
+    this.expect.element(wizard.nextStep).to.not.be.present;
+    this.selectOption('@metalAdvanced');
+    this.expect.element(wizard.nextStep).to.not.be.present;
+    this.selectOption('@openstackAdvanced');
+    this.expect.element(wizard.nextStep).to.not.be.present;
+
+    this.selectOption(platformEl);
+    this.expect.element(wizard.nextStep).to.be.present;
   },
 };
 
 module.exports = {
-
-  url: () => {
-    return this.api.launchUrl + '/define/cluster-type';
-  },
-
-  commands: [awsPlatformPageCommands,bareMetalplatformPageCommands],
+  commands: [platformPageCommands],
   elements: {
-    awsPlatform: {
-      selector: 'option[value="aws-tf"]',
-    },
-    bareMetalPlatform: {
-      selector: 'option[value="bare-metal-tf"]',
-    },
-    nextStep: {
-      selector:'//*[text()[contains(.,"Next Step")]]',
-      locateStrategy: 'xpath',
-    },
+    awsAdvanced: 'option[value="aws"]',
+    awsGUI: 'option[value="aws-tf"]',
+    azureAdvanced: 'option[value="azure"]',
+    metalAdvanced: 'option[value="bare-metal"]',
+    openstackAdvanced: 'option[value="openstack"]',
   },
 };

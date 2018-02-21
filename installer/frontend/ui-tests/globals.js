@@ -1,6 +1,11 @@
 const chromedriver = require('chromedriver');
+const path = require('path');
 
 module.exports = {
+  default: {
+    waitForConditionTimeout: 10000,
+  },
+
   before (done) {
     chromedriver.start();
     done();
@@ -10,4 +15,6 @@ module.exports = {
     chromedriver.stop();
     done();
   },
+
+  tmpUploadPath: path.join(path.resolve(__dirname), 'tmp-upload-test'),
 };

@@ -3,20 +3,17 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"os"
+	"path"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/dghubble/sessions"
 	"github.com/kardianos/osext"
 
-	"github.com/coreos/tectonic-installer/installer/pkg/tectonic"
 	"github.com/coreos/tectonic-installer/installer/pkg/terraform"
-)
-
-const (
-	bcryptCost = 12
 )
 
 // TerraformApplyHandlerInput describes the input expected by the
@@ -46,7 +43,7 @@ func terraformApplyHandler(w http.ResponseWriter, req *http.Request, ctx *Contex
 		// Restore the execution environment from the session.
 		_, ex, _, err = restoreExecutionFromSession(req, ctx.Sessions, &input.Credentials)
 	} else {
-		// Create a new TerraForm Executor with the TF variables.
+		// Create a new Terraform Executor with the TF variables.
 		ex, err = newExecutorFromApplyHandlerInput(&input)
 	}
 	if err != nil {
@@ -56,15 +53,16 @@ func terraformApplyHandler(w http.ResponseWriter, req *http.Request, ctx *Contex
 
 	// Copy the TF Templates to the Executor's working directory.
 	if err := terraform.RestoreSources(ex.WorkingDirectory()); err != nil {
-		return newInternalServerError("could not write TerraForm templates: %s", err)
+		return newInternalServerError("could not write Terraform templates: %s", err)
 	}
 
-	// Execute TerraForm get and wait for it to finish.
-	_, getDone, err := ex.Execute("get", "-no-color", tfMainDir)
+	// Execute Terraform init and wait for it to finish.
+	prepCommand := "init"
+	_, prepDone, err := ex.Execute(prepCommand, "-no-color", tfMainDir)
 	if err != nil {
-		return newInternalServerError("Failed to run TerraForm (get): %s", err)
+		return newInternalServerError("Failed to run Terraform (%s): %s", prepCommand, err)
 	}
-	<-getDone
+	<-prepDone
 
 	// Store both the path to the Executor and the ID of the execution so that
 	// the status can be read later on.
@@ -77,11 +75,11 @@ func terraformApplyHandler(w http.ResponseWriter, req *http.Request, ctx *Contex
 		id, _, err = ex.Execute("plan", "-no-color", tfMainDir)
 		action = "show"
 	} else {
-		id, _, err = ex.Execute("apply", "-input=false", "-no-color", tfMainDir)
+		id, _, err = ex.Execute("apply", "-input=false", "-no-color", "-auto-approve", tfMainDir)
 		action = "apply"
 	}
 	if err != nil {
-		return newInternalServerError("Failed to run TerraForm (%s): %s", action, err)
+		return newInternalServerError("Failed to run Terraform (%s): %s", action, err)
 	}
 	session.Values["terraform_id"] = id
 	session.Values["action"] = action
@@ -91,56 +89,6 @@ func terraformApplyHandler(w http.ResponseWriter, req *http.Request, ctx *Contex
 	}
 
 	return nil
-}
-
-func terraformStatusHandler(w http.ResponseWriter, req *http.Request, ctx *Context) error {
-	// Read the input from the request's body.
-	input := struct {
-		TectonicDomain string `json:"tectonicDomain"`
-	}{}
-	if err := json.NewDecoder(req.Body).Decode(&input); err != nil {
-		return newBadRequestError("Could not unmarshal input: %s", err)
-	}
-	defer req.Body.Close()
-
-	// Restore the execution environment from the session.
-	session, ex, exID, errCtx := restoreExecutionFromSession(req, ctx.Sessions, nil)
-	if errCtx != nil {
-		// Error directly (rather than NewAppError, which logs) since the
-		// frontend periodically calls this endpoint to advance screens
-		http.Error(w, fmt.Sprintf("Could not find session data: %v", errCtx), http.StatusNotFound)
-		return nil
-	}
-
-	// Retrieve Terraform's status and output.
-	status, err := ex.Status(exID)
-	if status == terraform.ExecutionStatusUnknown {
-		return newBadRequestError("Could not retrieve TerraForm execution's status: %s", err)
-	}
-	output, _ := ex.Output(exID)
-	outputBytes, _ := ioutil.ReadAll(output)
-
-	// Return results.
-	response := struct {
-		Status          string                 `json:"status"`
-		Output          string                 `json:"output,omitempty"`
-		Error           string                 `json:"error,omitempty"`
-		Action          string                 `json:"action"`
-		TectonicConsole tectonic.ServiceStatus `json:"tectonicConsole"`
-	}{
-		Status:          string(status),
-		Output:          string(outputBytes),
-		TectonicConsole: tectonic.ConsoleHealth(nil, input.TectonicDomain),
-	}
-	action := session.Values["action"]
-	if action != nil {
-		response.Action = action.(string)
-	}
-	if err != nil {
-		response.Error = err.Error()
-	}
-
-	return writeJSONResponse(w, req, http.StatusOK, response)
 }
 
 func terraformAssetsHandler(w http.ResponseWriter, req *http.Request, ctx *Context) error {
@@ -180,10 +128,10 @@ func terraformDestroyHandler(w http.ResponseWriter, req *http.Request, ctx *Cont
 	}
 	tfMainDir := fmt.Sprintf("%s/platforms/%s", ex.WorkingDirectory(), input.Platform)
 
-	// Execute TerraForm apply in the background.
+	// Execute Terraform apply in the background.
 	id, _, err := ex.Execute("destroy", "-force", "-no-color", tfMainDir)
 	if err != nil {
-		return newInternalServerError("Failed to run TerraForm (apply): %s", err)
+		return newInternalServerError("Failed to run Terraform (apply): %s", err)
 	}
 
 	// Store both the path to the Executor and the ID of the execution so that
@@ -213,12 +161,33 @@ func newExecutorFromApplyHandlerInput(input *TerraformApplyHandlerInput) (*terra
 	}
 	exPath := filepath.Join(binaryPath, "clusters", clusterName+time.Now().Format("_2006-01-02_15-04-05"))
 
+	// Publish custom providers to execution environment
+	clusterPluginDir := filepath.Join(
+		exPath,
+		"terraform.d",
+		"plugins",
+		fmt.Sprintf("%s_%s", runtime.GOOS, runtime.GOARCH),
+	)
+
+	err = os.MkdirAll(clusterPluginDir, os.ModeDir|0755)
+	if err != nil {
+		return nil, newInternalServerError("Could not create custom provider plugins location: %s", err)
+	}
+	customPlugins := []string{}
+	customPlugins, err = filepath.Glob(path.Join(binaryPath, "terraform-provider-*"))
+	if err != nil {
+		return nil, newInternalServerError("Could not locate custom provider plugins: %s", err)
+	}
+	for _, pluginBinPath := range customPlugins {
+		pluginBin := filepath.Base(pluginBinPath)
+		os.Symlink(pluginBinPath, filepath.Join(clusterPluginDir, pluginBin))
+	}
+
 	// Create a new Executor.
 	ex, err := terraform.NewExecutor(exPath)
 	if err != nil {
-		return nil, newInternalServerError("Could not create TerraForm executor: %s", err)
+		return nil, newInternalServerError("Could not create Terraform executor: %s", err)
 	}
-
 	// Write the License and Pull Secret to disk, and wire these files in the
 	// variables.
 	if input.License == "" {
@@ -231,40 +200,15 @@ func newExecutorFromApplyHandlerInput(input *TerraformApplyHandlerInput) (*terra
 	ex.AddFile("pull_secret.json", []byte(input.PullSecret))
 	input.Variables["tectonic_license_path"] = "./license.txt"
 	input.Variables["tectonic_pull_secret_path"] = "./pull_secret.json"
-	serviceCidr := input.Variables["tectonic_service_cidr"].(string)
-
-	ip, ok := input.Variables["tectonic_kube_apiserver_service_ip"].(string)
-	if !ok || len(ip) == 0 {
-		input.Variables["tectonic_kube_apiserver_service_ip"], err = tectonic.APIServiceIP(serviceCidr)
-		if err != nil {
-			return nil, newInternalServerError("Error calculating service IP: %s", err)
-		}
-	}
-
-	ip, ok = input.Variables["tectonic_kube_dns_service_ip"].(string)
-	if !ok || len(ip) == 0 {
-		input.Variables["tectonic_kube_dns_service_ip"], err = tectonic.DNSServiceIP(serviceCidr)
-		if err != nil {
-			return nil, newInternalServerError("Error calculating DNS IP: %s", err)
-		}
-	}
-
-	ip, ok = input.Variables["tectonic_kube_etcd_service_ip"].(string)
-	if !ok || len(ip) == 0 {
-		input.Variables["tectonic_kube_etcd_service_ip"], err = tectonic.EtcdServiceIP(serviceCidr)
-		if err != nil {
-			return nil, newInternalServerError("Error calculating etcd service IP: %s", err)
-		}
-	}
 
 	// Add variables and the required environment variables.
 	if variables, err := json.MarshalIndent(input.Variables, "", "  "); err == nil {
 		ex.AddVariables(variables)
 	} else {
-		return nil, newBadRequestError("Could not marshal TerraForm variables: %s", err)
+		return nil, newBadRequestError("Could not marshal Terraform variables: %s", err)
 	}
 	if err := ex.AddCredentials(&input.Credentials); err != nil {
-		return nil, newBadRequestError("Could not validate TerraForm credentials: %v", err)
+		return nil, newBadRequestError("Could not validate Terraform credentials: %v", err)
 	}
 
 	return ex, nil
@@ -287,10 +231,10 @@ func restoreExecutionFromSession(req *http.Request, sessionProvider sessions.Sto
 	}
 	ex, err := terraform.NewExecutor(executionPath.(string))
 	if err != nil {
-		return nil, nil, -1, newInternalServerError("Could not create TerraForm executor")
+		return nil, nil, -1, newInternalServerError("Could not create Terraform executor")
 	}
 	if err := ex.AddCredentials(credentials); err != nil {
-		return nil, nil, -1, newBadRequestError("Could not validate TerraForm credentials")
+		return nil, nil, -1, newBadRequestError("Could not validate Terraform credentials")
 	}
 	return session, ex, executionID.(int), nil
 }

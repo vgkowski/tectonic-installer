@@ -1,30 +1,14 @@
-# Generate unique storage name
-resource "random_id" "tectonic_master_storage_name" {
-  byte_length = 4
-}
-
-resource "azurerm_storage_account" "tectonic_master" {
-  name                = "master${random_id.tectonic_master_storage_name.hex}"
-  resource_group_name = "${var.resource_group_name}"
-  location            = "${var.location}"
-  account_type        = "${var.storage_account_type}"
-
-  tags {
-    environment = "staging"
-  }
-}
-
-resource "azurerm_storage_container" "tectonic_master" {
-  name                  = "${var.cluster_name}-vhd-master"
-  resource_group_name   = "${var.resource_group_name}"
-  storage_account_name  = "${azurerm_storage_account.tectonic_master.name}"
-  container_access_type = "private"
-}
-
 resource "azurerm_availability_set" "tectonic_masters" {
-  name                = "${var.cluster_name}-masters"
-  location            = "${var.location}"
-  resource_group_name = "${var.resource_group_name}"
+  name                        = "${var.cluster_name}-masters"
+  location                    = "${var.location}"
+  resource_group_name         = "${var.resource_group_name}"
+  managed                     = true
+  platform_fault_domain_count = "${var.fault_domains}"
+
+  tags = "${merge(map(
+    "Name", "${var.cluster_name}-masters",
+    "tectonicClusterID", "${var.cluster_id}"),
+    var.extra_tags)}"
 }
 
 resource "azurerm_virtual_machine" "tectonic_master" {
@@ -36,27 +20,29 @@ resource "azurerm_virtual_machine" "tectonic_master" {
   vm_size               = "${var.vm_size}"
   availability_set_id   = "${azurerm_availability_set.tectonic_masters.id}"
 
+  delete_os_disk_on_termination = true
+
   storage_image_reference {
     publisher = "CoreOS"
     offer     = "CoreOS"
-    sku       = "${var.cl_channel}"
-    version   = "${var.versions["container_linux"]}"
+    sku       = "${var.container_linux_channel}"
+    version   = "${var.container_linux_version}"
   }
 
   storage_os_disk {
-    name          = "master-osdisk"
-    caching       = "ReadWrite"
-    create_option = "FromImage"
-    os_type       = "linux"
-    vhd_uri       = "${azurerm_storage_account.tectonic_master.primary_blob_endpoint}${azurerm_storage_container.tectonic_master.name}/${count.index}.vhd"
+    name              = "master-${count.index}-os-${var.storage_id}"
+    managed_disk_type = "${var.storage_type}"
+    create_option     = "FromImage"
+    caching           = "ReadWrite"
+    os_type           = "linux"
+    disk_size_gb      = "${var.root_volume_size}"
   }
 
   os_profile {
     computer_name  = "${var.cluster_name}-master-${count.index}"
     admin_username = "core"
     admin_password = ""
-
-    custom_data = "${base64encode("${data.ignition_config.master.rendered}")}"
+    custom_data    = "${base64encode("${data.ignition_config.master.rendered}")}"
   }
 
   os_profile_linux_config {
@@ -68,7 +54,20 @@ resource "azurerm_virtual_machine" "tectonic_master" {
     }
   }
 
-  tags {
-    environment = "staging"
+  boot_diagnostics {
+    enabled     = "${var.boot_diagnostics}"
+    storage_uri = "${var.storage_name_boot_diag}"
+  }
+
+  tags = "${merge(map(
+    "Name", "${var.cluster_name}-master-${count.index}",
+    "tectonicClusterID", "${var.cluster_id}"),
+    var.extra_tags)}"
+
+  lifecycle {
+    ignore_changes = [
+      "storage_os_disk",
+      "storage_data_disk",
+    ]
   }
 }

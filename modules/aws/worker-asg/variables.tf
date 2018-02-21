@@ -6,7 +6,11 @@ variable "vpc_id" {
   type = "string"
 }
 
-variable "cl_channel" {
+variable "container_linux_channel" {
+  type = "string"
+}
+
+variable "container_linux_version" {
   type = "string"
 }
 
@@ -22,6 +26,11 @@ variable "ec2_type" {
   type = "string"
 }
 
+variable "ec2_ami" {
+  type    = "string"
+  default = ""
+}
+
 variable "instance_count" {
   type = "string"
 }
@@ -35,9 +44,10 @@ variable "sg_ids" {
   description = "The security group IDs to be applied."
 }
 
-variable "user_data" {
-  type        = "string"
-  description = "User-data content used to boot the instances"
+variable "load_balancers" {
+  description = "List of ELBs to attach all worker instances to."
+  type        = "list"
+  default     = []
 }
 
 variable "extra_tags" {
@@ -72,4 +82,17 @@ variable "worker_iam_role" {
   type        = "string"
   default     = ""
   description = "IAM role to use for the instance profiles of worker nodes."
+}
+
+variable "ign_s3_puller_id" {
+  type = "string"
+}
+
+variable "s3_bucket" {
+  type = "string"
+}
+
+variable "dns_server_ip" {
+  type    = "string"
+  default = ""
 }

@@ -1,45 +1,64 @@
+const _ = require('lodash');
 const fs = require('fs');
-const path = require('path');
 
 const clusterInfoPageCommands = {
-  enterClusterInfo(clusterName) {
-    const parentDir = path.resolve(__dirname, '..');
-    const coreOSLicensePath = path.join(parentDir, 'tectonic-license.txt');
-    const configPath = path.join(parentDir, 'config.json');
+  test (json, platform) {
+    this.setField('@name', 'a%$#b');
+    if (platform === 'aws-tf') {
+      this.expectValidationErrorContains('must be a valid AWS Stack Name');
+    }
+    if (platform === 'bare-metal-tf') {
+      this.expectValidationErrorContains('must be alphanumeric');
+    }
+
+    this.setField('@name', json.clusterName);
+    this.expectNoValidationError();
 
     /* eslint-disable no-sync */
-    const tectonic_license = fs.readFileSync(process.env.TF_VAR_tectonic_license_path, 'utf8');
-    const pull_secret = fs.readFileSync(process.env.TF_VAR_tectonic_pull_secret_path, 'utf8');
-    fs.writeFileSync(coreOSLicensePath, tectonic_license);
-    fs.writeFileSync(configPath, pull_secret);
+    this.setFileField('@licenseUpload', fs.readFileSync(process.env.TF_VAR_tectonic_license_path, 'utf8'));
+    this.setFileField('@pullSecretUpload', fs.readFileSync(process.env.TF_VAR_tectonic_pull_secret_path, 'utf8'));
     /* eslint-enable no-sync */
 
-    return this
-      .setValue('@name', clusterName)
-      .setValue('@coreOSLicenseUpload', coreOSLicensePath)
-      .setValue('@pullSecretUpload', configPath)
-      .click('@nextStep');
+    if (platform === 'aws-tf' && !_.isEmpty(json.awsTags)) {
+      this
+        .setField('input[id="awsTags.0.key"]', 'abc')
+        .setField('input[id="awsTags.0.value"]', 'abc')
+        .expectNoValidationError()
+        .setField('input[id="awsTags.0.key"]', '')
+        .expectValidationErrorContains('Both fields are required')
+        .setField('input[id="awsTags.0.key"]', 'abc')
+        .expectNoValidationError()
+        .setField('input[id="awsTags.0.value"]', '')
+        .expectValidationErrorContains('Both fields are required')
+        .setField('input[id="awsTags.0.key"]', '')
+        .expectNoValidationError()
+        .click('.fa-plus-circle')
+        .click('.fa-plus-circle')
+        .setField('input[id="awsTags.1.key"]', 'abc')
+        .setField('input[id="awsTags.2.key"]', 'abc')
+        .expectValidationErrorContains('Tag keys must be unique')
+        .click('.fa-minus-circle')
+        .click('.fa-minus-circle')
+        .setField('input[id="awsTags.0.key"]', json.awsTags[0].key)
+        .setField('input[id="awsTags.0.value"]', json.awsTags[0].value)
+        .expectNoValidationError();
+
+      for (let i = 1; i < json.awsTags.length; i++) {
+        this
+          .click('.fa-plus-circle')
+          .setField('input[id="awsTags.1.key"]', json.awsTags[1].key)
+          .setField('input[id="awsTags.1.value"]', json.awsTags[1].value)
+          .expectNoValidationError();
+      }
+    }
   },
 };
 
 module.exports = {
-  url: '',
   commands: [clusterInfoPageCommands],
   elements: {
-    name: {
-      selector: 'input[id=clusterName]',
-    },
-    coreOSLicenseUpload: {
-      selector: '//*[text()[contains(.,"tectonic-license.txt")]]/input[@type="file"]',
-      locateStrategy: 'xpath',
-    },
-    pullSecretUpload: {
-      selector: '//*[text()[contains(.,"config.json")]]/input[@type="file"]',
-      locateStrategy: 'xpath',
-    },
-    nextStep: {
-      selector:'//*[text()[contains(.,"Next Step")]]',
-      locateStrategy: 'xpath',
-    },
+    name: 'input#clusterName',
+    licenseUpload: 'input[type="file"]#tectonicLicense',
+    pullSecretUpload: 'input[type="file"]#pullSecret',
   },
 };

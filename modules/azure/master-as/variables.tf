@@ -1,46 +1,33 @@
-// Location is the Azure Location (East US, West US, etc)
-variable "location" {
+variable "container_linux_channel" {
   type = "string"
 }
 
-variable "resource_group_name" {
+variable "container_linux_version" {
   type = "string"
 }
 
-// VM Size name
-variable "vm_size" {
+variable "cloud_provider_config" {
   type = "string"
 }
 
-// Storage account type
-variable "storage_account_type" {
+variable "cluster_id" {
   type = "string"
 }
 
-// The base DNS domain of the cluster.
-// Example: `azure.dev.coreos.systems`
-variable "base_domain" {
-  type = "string"
-}
-
-// The name of the cluster.
 variable "cluster_name" {
+  type        = "string"
+  description = "The name of the cluster."
+}
+
+variable "extra_tags" {
+  type = "map"
+}
+
+variable "ign_azure_udev_rules_id" {
   type = "string"
 }
 
-variable "public_ssh_key" {
-  type = "string"
-}
-
-variable "virtual_network" {
-  type = "string"
-}
-
-variable "kube_image_url" {
-  type = "string"
-}
-
-variable "kube_image_tag" {
+variable "ign_tx_off_service_id" {
   type = "string"
 }
 
@@ -48,50 +35,14 @@ variable "kubeconfig_content" {
   type = "string"
 }
 
-// Count of master nodes to be created.
+variable "location" {
+  type        = "string"
+  description = "Location is the Azure Location (East US, West US, etc)"
+}
+
 variable "master_count" {
-  type = "string"
-}
-
-variable "tectonic_kube_dns_service_ip" {
-  type = "string"
-}
-
-variable "cloud_provider" {
-  type    = "string"
-  default = "azure"
-}
-
-variable "cloud_provider_config" {
-  description = "Content of cloud provider config"
   type        = "string"
-}
-
-variable "kubelet_node_label" {
-  type = "string"
-}
-
-variable "kubelet_node_taints" {
-  type = "string"
-}
-
-variable "kubelet_cni_bin_dir" {
-  type = "string"
-}
-
-variable "bootkube_service" {
-  type        = "string"
-  description = "The content of the bootkube systemd service unit"
-}
-
-variable "tectonic_service" {
-  type        = "string"
-  description = "The content of the tectonic installer systemd service unit"
-}
-
-variable "tectonic_service_disabled" {
-  description = "Specifies whether the tectonic installer systemd unit will be disabled. If true, no tectonic assets will be deployed"
-  default     = false
+  description = "Count of master nodes to be created."
 }
 
 variable "network_interface_ids" {
@@ -99,11 +50,59 @@ variable "network_interface_ids" {
   description = "List of NICs to use for master VMs"
 }
 
-variable "versions" {
-  description = "(internal) Versions of the components to use"
-  type        = "map"
+variable "public_ssh_key" {
+  type = "string"
 }
 
-variable "cl_channel" {
+variable "resource_group_name" {
   type = "string"
+}
+
+variable "storage_id" {
+  type = "string"
+}
+
+variable "storage_type" {
+  type        = "string"
+  description = "Storage account type"
+}
+
+variable "root_volume_size" {
+  type = "string"
+}
+
+variable "vm_size" {
+  type        = "string"
+  description = "VM Size name"
+}
+
+variable "ign_bootkube_service_id" {
+  type        = "string"
+  description = "The ID of the bootkube systemd service unit"
+}
+
+variable "ign_bootkube_path_unit_id" {
+  type = "string"
+}
+
+variable "ign_tectonic_service_id" {
+  type        = "string"
+  description = "The ID of the tectonic installer systemd service unit"
+}
+
+variable "ign_tectonic_path_unit_id" {
+  type = "string"
+}
+
+variable "fault_domains" {
+  type = "string"
+}
+
+variable "boot_diagnostics" {
+  type = "string"
+}
+
+variable "storage_name_boot_diag" {
+  type    = "string"
+  default = ""
 }

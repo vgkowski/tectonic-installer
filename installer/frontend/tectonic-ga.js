@@ -1,4 +1,10 @@
-import { isReleaseVersion } from './utils';
+import _ from 'lodash';
+import semver from 'semver';
+
+import { store } from './store';
+
+const version = () => _.get(store.getState(), 'serverFacts.version');
+const isReleaseVersion = () => semver.valid(version()) !== null && !version().includes('-rc.');
 
 const send = (obj) => {
   if (!isReleaseVersion()) {
@@ -7,18 +13,18 @@ const send = (obj) => {
 
   try {
     const ga = window[window.GoogleAnalyticsObject || 'ga'];
-    if (typeof ga === 'function') {
-      if (obj.type === 'pageview') {
-        ga('TectonicInstaller.send', 'pageview', obj.page);
-        ga('CoreOS.send', 'pageview', obj.page);
-      } else if (obj.type === 'event') {
-        const {category, action, label, value} = obj;
-        ga('TectonicInstaller.send', 'event', category, action, label, value);
-        ga('CoreOS.send', 'event', category, action, label, value);
-      }
+    if (typeof ga !== 'function') {
+      throw new Error('ga is not a function!');
     }
-  }
-  catch(err) {
+    if (obj.type === 'pageview') {
+      ga('TectonicInstaller.send', 'pageview', obj.page);
+      ga('CoreOS.send', 'pageview', obj.page);
+    } else if (obj.type === 'event') {
+      const {category, action, label, value} = obj;
+      ga('TectonicInstaller.send', 'event', category, action, label, value);
+      ga('CoreOS.send', 'event', category, action, label, value);
+    }
+  } catch (err) {
     console.error(`Failed to send GA event: ${err.message}`);
   }
 };
@@ -41,23 +47,31 @@ export const TectonicGA = {
   },
 
   sendPageView: (page) => {
-    send({ type: 'pageview', page});
+    send({type: 'pageview', page});
   },
 
-  sendEvent: (category, action, label = "", platform = "") => {
+  sendError: (message, stack = '') => {
     send({
       type: 'event',
-      category, action,
-      label: `${platform}-${GIT_TAG} ${label}`,
+      category: 'installerError',
+      label: `${version()} ${message} Stack: ${stack}`,
     });
   },
 
-  sendDocsEvent: (platform = "") => {
+  sendEvent: (category, action, label = '', platform = '') => {
+    send({
+      type: 'event',
+      category, action,
+      label: `${platform}-${version()} ${label}`,
+    });
+  },
+
+  sendDocsEvent: (platform = '') => {
     send({
       type: 'event',
       category: 'Installer Docs Link',
       action: 'click',
-      label: `${platform}-${GIT_TAG} User clicks on documentation link`,
+      label: `${platform}-${version()} User clicks on documentation link`,
     });
   },
 };

@@ -6,7 +6,7 @@ resource "openstack_compute_servergroup_v2" "etcd_group" {
 }
 
 resource "openstack_compute_instance_v2" "etcd_node" {
-  count = "${var.tectonic_experimental ? 0 : var.tectonic_etcd_count}"
+  count = "${var.tectonic_etcd_count}"
   name  = "${var.tectonic_cluster_name}_etcd_node_${count.index}"
 
   image_name = "${var.tectonic_openstack_image_name}"
@@ -105,7 +105,7 @@ resource "openstack_compute_instance_v2" "worker_node" {
 }
 
 resource "openstack_compute_floatingip_associate_v2" "worker" {
-  count = "${var.tectonic_worker_count}"
+  count = "${var.tectonic_openstack_disable_floatingip ? 0 : var.tectonic_worker_count}"
 
   floating_ip = "${openstack_networking_floatingip_v2.worker.*.address[count.index]}"
   instance_id = "${openstack_compute_instance_v2.worker_node.*.id[count.index]}"
@@ -117,11 +117,11 @@ resource "null_resource" "tectonic" {
   depends_on = [
     "module.bootkube",
     "module.tectonic",
-    "module.flannel-vxlan",
-    "module.calico-network-policy",
+    "module.dns",
     "openstack_compute_instance_v2.master_node",
     "openstack_networking_port_v2.master",
     "openstack_networking_floatingip_v2.master",
+    "openstack_networking_floatingip_v2.loadbalancer",
   ]
 
   connection {
@@ -140,7 +140,6 @@ resource "null_resource" "tectonic" {
       "sudo mkdir -p /opt",
       "sudo rm -rf /opt/tectonic",
       "sudo mv /home/core/tectonic /opt/",
-      "sudo systemctl start ${var.tectonic_vanilla_k8s ? "bootkube.service" : "tectonic.service"}",
     ]
   }
 }

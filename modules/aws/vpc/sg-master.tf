@@ -54,8 +54,8 @@ resource "aws_security_group_rule" "master_ingress_https" {
 
   protocol    = "tcp"
   cidr_blocks = ["0.0.0.0/0"]
-  from_port   = 443
-  to_port     = 443
+  from_port   = 6443
+  to_port     = 6443
 }
 
 resource "aws_security_group_rule" "master_ingress_heapster" {
@@ -183,7 +183,7 @@ resource "aws_security_group_rule" "master_ingress_services" {
   security_group_id = "${aws_security_group.master.id}"
 
   protocol  = "tcp"
-  from_port = 32000
+  from_port = 30000
   to_port   = 32767
   self      = true
 }
@@ -194,6 +194,6 @@ resource "aws_security_group_rule" "master_ingress_services_from_console" {
   source_security_group_id = "${aws_security_group.console.id}"
 
   protocol  = "tcp"
-  from_port = 32000
+  from_port = 30000
   to_port   = 32767
 }

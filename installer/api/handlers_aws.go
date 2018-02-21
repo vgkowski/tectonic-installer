@@ -15,11 +15,18 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/aws/aws-sdk-go/service/route53domains"
 
 	paws "github.com/coreos/tectonic-installer/installer/pkg/aws"
 )
+
+type awsVPC struct {
+	CIDR string `json:"instanceCIDR"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
 
 type labelValue struct {
 	Label string `json:"label"`
@@ -144,26 +151,26 @@ func awsGetVPCsHandler(w http.ResponseWriter, req *http.Request, _ *Context) err
 		return fromAWSErr(err)
 	}
 
-	response := []labelValue{}
-
+	response := make([]awsVPC, 0, len(vpcs.Vpcs))
 	for _, vpc := range vpcs.Vpcs {
 		if vpc.VpcId == nil {
 			continue
 		}
 
-		label := aws.StringValue(vpc.VpcId)
+		var name string
 		for _, tag := range vpc.Tags {
 			if aws.StringValue(tag.Key) == "Name" {
-				label = fmt.Sprintf("%s - %s", aws.StringValue(tag.Value), label)
+				name = aws.StringValue(tag.Value)
 				break
 			}
 		}
 
-		response = append(response, labelValue{label, aws.StringValue(vpc.VpcId)})
+		response = append(response, awsVPC{
+			ID:   aws.StringValue(vpc.VpcId),
+			CIDR: aws.StringValue(vpc.CidrBlock),
+			Name: name,
+		})
 	}
-	sort.Slice(response, func(i, j int) bool {
-		return response[i].Label >= response[j].Label
-	})
 
 	return writeJSONResponse(w, req, http.StatusOK, response)
 }
@@ -227,22 +234,73 @@ func awsGetKeyPairsHandler(w http.ResponseWriter, req *http.Request, _ *Context)
 	return writeJSONResponse(w, req, http.StatusOK, response)
 }
 
-// awsGetZonesHandler returns the list of Route53 Hosted Zones.
-func awsGetZonesHandler(w http.ResponseWriter, req *http.Request, _ *Context) error {
+// awsGetIamRolesHandler returns the list of IAM roles.
+func awsGetIamRolesHandler(w http.ResponseWriter, req *http.Request, _ *Context) error {
 	awsSession, err := awsSessionFromRequest(req)
 	if err != nil {
 		return fromAWSErr(err)
 	}
-	route53svc := route53.New(awsSession)
 
-	resp, err := route53svc.ListHostedZones(&route53.ListHostedZonesInput{})
+	iamSvc := iam.New(awsSession)
+	resp, err := iamSvc.ListRoles(&iam.ListRolesInput{})
 	if err != nil {
 		return fromAWSErr(err)
 	}
 
+	roles := make([]string, len(resp.Roles))
+	for i, role := range resp.Roles {
+		roles[i] = aws.StringValue(role.RoleName)
+	}
+	sort.Strings(roles)
+
+	return writeJSONResponse(w, req, http.StatusOK, roles)
+}
+
+// awsGetZonesHandler returns the list of Route53 Hosted Zones.
+func awsGetZonesHandler(w http.ResponseWriter, req *http.Request, _ *Context) error {
+
+	addHostedZones := func(allZones *[]*route53.HostedZone, marker *string) error {
+
+		awsSession, err := awsSessionFromRequest(req)
+		if err != nil {
+			return err
+		}
+		route53svc := route53.New(awsSession)
+
+		requestInput := route53.ListHostedZonesInput{}
+		if *marker != "" {
+			requestInput = route53.ListHostedZonesInput{Marker: marker}
+		}
+
+		resp, err := route53svc.ListHostedZones(&requestInput)
+		if err != nil {
+			return err
+		}
+
+		*allZones = append(*allZones, resp.HostedZones...)
+
+		if *resp.IsTruncated == true {
+			*marker = *resp.NextMarker
+		} else {
+			*marker = "complete"
+		}
+
+		return nil
+	}
+
+	var allZones []*route53.HostedZone
+	var marker string
+
+	for marker != "complete" {
+		err := addHostedZones(&allZones, &marker)
+		if err != nil {
+			return fromAWSErr(err)
+		}
+	}
+
 	response := []labelValue{}
 
-	for _, key := range resp.HostedZones {
+	for _, key := range allZones {
 		// Strip trailing dot off domain names & add "(private)" to private zones
 		label := strings.TrimSuffix(aws.StringValue(key.Name), ".")
 		if aws.BoolValue(key.Config.PrivateZone) {

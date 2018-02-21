@@ -1,13 +1,14 @@
 // CoreOS Install Profile
-resource "matchbox_profile" "coreos-install" {
-  name   = "coreos-install"
-  kernel = "/assets/coreos/${var.tectonic_metal_cl_version}/coreos_production_pxe.vmlinuz"
+resource "matchbox_profile" "coreos_install" {
+  name   = "${var.tectonic_cluster_name}-coreos-install"
+  kernel = "/assets/coreos/${module.container_linux.version}/coreos_production_pxe.vmlinuz"
 
   initrd = [
-    "/assets/coreos/${var.tectonic_metal_cl_version}/coreos_production_pxe_image.cpio.gz",
+    "/assets/coreos/${module.container_linux.version}/coreos_production_pxe_image.cpio.gz",
   ]
 
   args = [
+    "initrd=coreos_production_pxe_image.cpio.gz",
     "coreos.config.url=${var.tectonic_metal_matchbox_http_url}/ignition?uuid=$${uuid}&mac=$${mac:hexhyp}",
     "coreos.first_boot=yes",
     "console=tty0",
@@ -18,13 +19,13 @@ resource "matchbox_profile" "coreos-install" {
 }
 
 // Self-hosted Kubernetes Controller profile
-resource "matchbox_profile" "tectonic-controller" {
-  name                   = "tectonic-controller"
+resource "matchbox_profile" "tectonic_controller" {
+  name                   = "${var.tectonic_cluster_name}-tectonic-controller"
   container_linux_config = "${file("${path.module}/cl/bootkube-controller.yaml.tmpl")}"
 }
 
 // Self-hosted Kubernetes Worker profile
-resource "matchbox_profile" "tectonic-worker" {
-  name                   = "tectonic-worker"
+resource "matchbox_profile" "tectonic_worker" {
+  name                   = "${var.tectonic_cluster_name}-tectonic-worker"
   container_linux_config = "${file("${path.module}/cl/bootkube-worker.yaml.tmpl")}"
 }

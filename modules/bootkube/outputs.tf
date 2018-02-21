@@ -1,5 +1,5 @@
 # This output is meant to be used to inject a dependency on the generated
-# assets. As of TerraForm v0.9, it is difficult to make a module depend on
+# assets. As of Terraform v0.9, it is difficult to make a module depend on
 # another module (no depends_on, no triggers), or to make a data source
 # depend on a module (no depends_on, no triggers, generally no dummy variable).
 #
@@ -17,77 +17,38 @@
 # interpolated once the assets have all been created.
 output "id" {
   value = "${sha1("
-  ${data.archive_file.etcd_tls_zip.id}
   ${local_file.kubeconfig.id}
-  ${local_file.bootkube-sh.id}
-  ${template_dir.bootkube.id} ${template_dir.bootkube-bootstrap.id}
-  ${join(" ",
-    local_file.etcd_ca_crt.*.id,
-    local_file.etcd_server_crt.*.id,
-    local_file.etcd_server_key.*.id,
-    local_file.etcd_client_crt.*.id,
-    local_file.etcd_client_key.*.id,
-    local_file.etcd_peer_crt.*.id,
-    local_file.etcd_peer_key.*.id,
-    template_dir.experimental.*.id,
-    template_dir.bootstrap-experimental.*.id,
-    template_dir.etcd-experimental.*.id,
-    )}
+  ${local_file.kubeconfig-kubelet.id}
+  ${local_file.bootkube_sh.id}
+  ${local_file.kco-config_yaml.id}
+  ${template_dir.bootkube.id}
   ")}"
-}
-
-output "etcd_tls_zip" {
-  value = "${data.archive_file.etcd_tls_zip.id != "" ? file("./.terraform/etcd_tls.zip") : ""}"
 }
 
 output "kubeconfig" {
   value = "${data.template_file.kubeconfig.rendered}"
 }
 
-output "ca_cert" {
-  value = "${var.ca_cert == "" ? join(" ", tls_self_signed_cert.kube-ca.*.cert_pem) : var.ca_cert}"
+output "kubeconfig-kubelet" {
+  value = "${data.template_file.kubeconfig-kubelet.rendered}"
 }
 
-output "ca_key_alg" {
-  value = "${var.ca_cert == "" ? join(" ", tls_self_signed_cert.kube-ca.*.key_algorithm) : var.ca_key_alg}"
-}
-
-output "ca_key" {
-  value = "${var.ca_cert == "" ? join(" ", tls_private_key.kube-ca.*.private_key_pem) : var.ca_key}"
-}
-
-output "systemd_service" {
+output "systemd_service_rendered" {
   value = "${data.template_file.bootkube_service.rendered}"
+}
+
+output "systemd_service_id" {
+  value = "${data.ignition_systemd_unit.bootkube_service.id}"
+}
+
+output "systemd_path_unit_rendered" {
+  value = "${data.template_file.bootkube_path_unit.rendered}"
+}
+
+output "systemd_path_unit_id" {
+  value = "${data.ignition_systemd_unit.bootkube_path_unit.id}"
 }
 
 output "kube_dns_service_ip" {
   value = "${cidrhost(var.service_cidr, 10)}"
-}
-
-output "etcd_ca_crt_pem" {
-  value = "${join("", tls_self_signed_cert.etcd-ca.*.cert_pem)}"
-}
-
-output "etcd_server_crt_pem" {
-  value = "${join("", tls_locally_signed_cert.etcd_server.*.cert_pem)}"
-}
-
-output "etcd_server_key_pem" {
-  value = "${join("", tls_private_key.etcd_server.*.private_key_pem)}"
-}
-
-output "etcd_client_crt_pem" {
-  value = "${join("", tls_locally_signed_cert.etcd_client.*.cert_pem)}"
-}
-
-output "etcd_client_key_pem" {
-  value = "${join("", tls_private_key.etcd_client.*.private_key_pem)}"
-}
-
-output "etcd_peer_crt_pem" {
-  value = "${join("", tls_locally_signed_cert.etcd_peer.*.cert_pem)}"
-}
-
-output "etcd_peer_key_pem" {
-  value = "${join("", tls_private_key.etcd_peer.*.private_key_pem)}"
 }

@@ -28,6 +28,10 @@ type Config struct {
 	// Whether the server was started with --dev
 	DevMode bool
 
+	// If not "", search this directory for Tectonic license and pull secret
+	// files rather than the installer executable directory
+	SecretsDir string
+
 	// Cookie Sessions
 	CookieSigningSecret string
 
@@ -80,18 +84,22 @@ func New(config *Config) (http.Handler, error) {
 	mux.Handle("/aws/vpcs", logRequests(httpHandler("POST", ctx, awsGetVPCsHandler)))
 	mux.Handle("/aws/vpcs/subnets", logRequests(httpHandler("POST", ctx, awsGetVPCsSubnetsHandler)))
 	mux.Handle("/aws/ssh-key-pairs", logRequests(httpHandler("POST", ctx, awsGetKeyPairsHandler)))
+	mux.Handle("/aws/iam-roles", logRequests(httpHandler("POST", ctx, awsGetIamRolesHandler)))
 	mux.Handle("/aws/zones", logRequests(httpHandler("POST", ctx, awsGetZonesHandler)))
 	mux.Handle("/aws/domain", logRequests(httpHandler("POST", ctx, awsGetDomainInfoHandler)))
 
 	// handlers_terraform.go
 	mux.Handle("/terraform/apply", logRequests(httpHandler("POST", ctx, terraformApplyHandler)))
-	mux.Handle("/terraform/status", logRequests(httpHandler("POST", ctx, terraformStatusHandler)))
 	mux.Handle("/terraform/assets", logRequests(httpHandler("GET", ctx, terraformAssetsHandler)))
 	mux.Handle("/terraform/destroy", logRequests(httpHandler("POST", ctx, terraformDestroyHandler)))
 
+	// handlers_tectonic.go
+	mux.Handle("/tectonic/status", logRequests(httpHandler("POST", ctx, tectonicStatusHandler)))
+	mux.Handle("/tectonic/kubeconfig", logRequests(httpHandler("GET", ctx, tectonicKubeconfigHandler)))
+	mux.Handle("/tectonic/facts", logRequests(httpHandler("GET", ctx, tectonicFactsHandler)))
+
 	// handlers_containerlinux.go
 	mux.Handle("/containerlinux/images/matchbox", logRequests(httpHandler("GET", ctx, listMatchboxImagesHandler)))
-	mux.Handle("/containerlinux/images/amis", logRequests(httpHandler("GET", ctx, listAMIImagesHandler)))
 
 	//handlers_latest_release.go
 	mux.Handle("/releases/latest", logRequests(httpHandler("GET", ctx, latestReleaseHandler)))

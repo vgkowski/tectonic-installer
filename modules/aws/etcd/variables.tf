@@ -10,11 +10,11 @@ variable "cluster_name" {
   type = "string"
 }
 
-variable "cl_channel" {
+variable "container_linux_channel" {
   type = "string"
 }
 
-variable "dns_zone_id" {
+variable "container_linux_version" {
   type = "string"
 }
 
@@ -40,6 +40,11 @@ variable "container_image" {
 
 variable "ec2_type" {
   type = "string"
+}
+
+variable "ec2_ami" {
+  type    = "string"
+  default = ""
 }
 
 variable "extra_tags" {
@@ -69,16 +74,35 @@ variable "sg_ids" {
   description = "The security group IDs to be applied."
 }
 
-variable "dns_enabled" {
-  description = "If set to true, DNS records for etcd nodes will be created."
-  type        = "string"
-  default     = "false"
+variable "ign_etcd_dropin_id_list" {
+  type = "list"
 }
 
-variable "tls_enabled" {
-  default = false
-}
-
-variable "tls_zip" {
+variable "s3_bucket" {
   type = "string"
+}
+
+variable "ign_etcd_crt_id_list" {
+  type = "list"
+}
+
+variable "etcd_iam_role" {
+  type        = "string"
+  default     = ""
+  description = "IAM role to use for the instance profiles of etcd nodes."
+}
+
+variable "dns_server_ip" {
+  type    = "string"
+  default = ""
+}
+
+variable "ign_profile_env_id" {
+  type    = "string"
+  default = ""
+}
+
+variable "ign_systemd_default_env_id" {
+  type    = "string"
+  default = ""
 }

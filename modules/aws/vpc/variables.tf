@@ -14,6 +14,10 @@ variable "cluster_id" {
   type = "string"
 }
 
+variable "base_domain" {
+  type = "string"
+}
+
 variable "cluster_name" {
   type = "string"
 }
@@ -55,4 +59,20 @@ variable "master_azs" {
 
 variable "worker_azs" {
   type = "list"
+}
+
+variable "private_master_endpoints" {
+  description = "If set to true, private-facing ingress resources are created."
+  default     = true
+}
+
+variable "public_master_endpoints" {
+  description = "If set to true, public-facing ingress resources are created."
+  default     = true
+}
+
+variable "custom_dns_name" {
+  type        = "string"
+  default     = ""
+  description = "DNS prefix used to construct the console and API server endpoints."
 }

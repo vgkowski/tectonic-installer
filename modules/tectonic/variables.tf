@@ -7,6 +7,11 @@ variable "container_images" {
   type        = "map"
 }
 
+variable "container_base_images" {
+  description = "Container base images to use. Leave blank for defaults."
+  type        = "map"
+}
+
 variable "versions" {
   description = "Versions of the components to use. Leave blank for defaults."
   type        = "map"
@@ -44,16 +49,6 @@ variable "ca_cert" {
   type        = "string"
 }
 
-variable "ca_key_alg" {
-  description = "Algorithm used to generate ca_key. Example: RSA."
-  type        = "string"
-}
-
-variable "ca_key" {
-  description = "Contents of a PEM-encoded CA key, used to generate Tectonic Console's server certificate. Leave blank to generate a new CA."
-  type        = "string"
-}
-
 variable "base_address" {
   description = "Base address used to access the Tectonic Console, without protocol nor trailing forward slash (may contain a port). Example: console.example.com:30000."
   type        = "string"
@@ -65,10 +60,9 @@ variable "admin_email" {
   default     = "admin@example.com"
 }
 
-variable "admin_password_hash" {
-  description = "Hashed password used to by the cluster admin to login to the Tectonic Console. Generate with the bcrypt-hash tool (https://github.com/coreos/bcrypt-tool/releases/tag/v1.0.0)."
+variable "admin_password" {
+  description = "Password used to by the cluster admin to login to the Tectonic Console. Backslashes and double quotes must be escaped."
   type        = "string"
-  default     = "2a$12$k9wa31uE/4uD9aVtT/vNtOZwxXyEJ/9DwXXEYB/eUpb9fvEPsH/kO"
 }
 
 variable "update_server" {
@@ -107,11 +101,6 @@ variable "identity_api_service" {
   default     = "tectonic-identity-api.tectonic-system.svc.cluster.local"
 }
 
-variable "experimental" {
-  description = "If set to true, experimental Tectonic assets are being deployed."
-  default     = false
-}
-
 variable "master_count" {
   description = "The amount of master nodes present in the cluster."
   type        = "string"
@@ -128,4 +117,37 @@ variable "image_re" {
 EOF
 
   type = "string"
+}
+
+variable "ingress_ca_cert_pem" {
+  type = "string"
+}
+
+variable "ingress_cert_pem" {
+  type = "string"
+}
+
+variable "ingress_key_pem" {
+  type = "string"
+}
+
+variable "identity_server_cert_pem" {
+  type = "string"
+}
+
+variable "identity_server_key_pem" {
+  type = "string"
+}
+
+variable "identity_client_cert_pem" {
+  type = "string"
+}
+
+variable "identity_client_key_pem" {
+  type = "string"
+}
+
+variable "service_cidr" {
+  description = "A CIDR notation IP range from which to assign service cluster IPs"
+  type        = "string"
 }

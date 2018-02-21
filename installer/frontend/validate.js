@@ -12,7 +12,7 @@ export const compose = (...validators) => {
 };
 
 export const validate = {
-  nonEmpty: function (s) {
+  nonEmpty: (s) => {
     if (s && ('' + s).trim().length > 0) {
       return;
     }
@@ -38,26 +38,32 @@ export const validate = {
     return 'Invalid private key. Check your key for copy/paste errors';
   },
 
-  email: (s) => {
-    // from: https://www.w3.org/TR/html5/forms.html#valid-e-mail-address
-    const EMAIL_RE = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  email: (s = '') => {
+    const errMsg = validate.nonEmpty(s);
+    if (errMsg) {
+      return errMsg;
+    }
+    const [name, domain] = s.split('@');
+    // No whitespace allowed
+    if (validate.nonEmpty(name) || /\s/g.test(name) || !domain || validate.domainName(domain)) {
+      return 'Invalid email address.';
+    }
+  },
 
-    if (EMAIL_RE.test(s)) {
+  MAC: (s = '') => {
+    if (!s.length) {
       return;
     }
 
-    return 'Invalid email address.';
-  },
-
-  MAC: (s='') => {
     if (s.trim() !== s) {
       return 'Leading/trailing whitespace not allowed.';
     }
+
     // We want to accept everything that golang net.ParseMAC will
     // see https://golang.org/src/net/mac.go?s=1054:1106#L28
     const error = 'Invalid MAC address.';
 
-    if (s.match(/^([a-fA-F0-9]{2}\:)+([a-fA-F0-9]{2})$/)) {
+    if (s.match(/^([a-fA-F0-9]{2}:)+([a-fA-F0-9]{2})$/)) {
       if (s.length === '01:23:45:67:89:ab'.length ||
         s.length === '01:23:45:67:89:ab:cd:ef'.length ||
         s.length === '01:23:45:67:89:ab:cd:ef:00:00:01:23:45:67:89:ab:cd:ef:00:00'.length) {
@@ -67,7 +73,7 @@ export const validate = {
       return error;
     }
 
-    if (s.match(/^([a-fA-F0-9]{2}\-)+([a-fA-F0-9]{2})$/)) {
+    if (s.match(/^([a-fA-F0-9]{2}-)+([a-fA-F0-9]{2})$/)) {
       if (s.length === '01-23-45-67-89-ab'.length ||
         s.length === '01-23-45-67-89-ab-cd-ef'.length ||
         s.length === '01-23-45-67-89-ab-cd-ef-00-00-01-23-45-67-89-ab-cd-ef-00-00'.length) {
@@ -121,7 +127,15 @@ export const validate = {
     return 'Invalid format. You must provide a domain name or IP address.';
   },
 
-  port: (s='') => {
+  url: (s) => {
+    const matched = (s || '').match(/^https?:\/\/(.*)$/);
+    if (matched && matched[1]) {
+      return validate.host(matched[1]);
+    }
+    return 'Invalid format. Please include "http://" or "https://".';
+  },
+
+  port: (s = '') => {
     const errMsg = 'Invalid port value. You must provide a valid port number.';
     if (!s.match(/^[0-9]+$/)) {
       return errMsg;
@@ -155,7 +169,7 @@ export const validate = {
       return err;
     }
     // Don't let users hang themselves
-    if (s.match(/\-{5}BEGIN [\w-]+ PRIVATE KEY\-{5}/)) {
+    if (s.match(/-{5}BEGIN [\w-]+ PRIVATE KEY-{5}/)) {
       return 'Private key detected! Please paste your public key.';
     }
     const [pubKey, ...extraKeys] = _.trimEnd(s).split('\n');
@@ -175,8 +189,8 @@ export const validate = {
 
   schema: (schema) => {
     return (value) => {
-      for (let k of Object.keys(schema)) {
-        let validity = schema[k](value[k]);
+      for (const k of Object.keys(schema)) {
+        const validity = schema[k](value[k]);
         if (validity) {
           return validity;
         }
@@ -193,11 +207,11 @@ export const validate = {
       }
 
       if (min !== undefined && value < min) {
-        return `Invalid value. Provide a value greater than ${min - 1}.`;
+        return `Invalid value. Cannot be less than ${min}.`;
       }
 
       if (max !== undefined && value > max) {
-        return `Invalid value. Provide a value less than ${max + 1}.`;
+        return `Invalid value. Cannot be greater than ${max}.`;
       }
 
       return;
@@ -243,7 +257,7 @@ export const validate = {
   },
 
   AWSsubnetCIDR: value => {
-    let err = validate.CIDR(value);
+    const err = validate.CIDR(value);
     if (err) {
       return err;
     }

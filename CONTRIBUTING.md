@@ -36,6 +36,11 @@ Due to their public nature, GitHub and mailing lists are not appropriate places 
 - Fork the repository on GitHub
 - Read the [README](README.md) for build and test instructions
 - Play with the project, submit bugs, submit patches!
+- Go get a couple of projects nesessary for updating docs and examples:
+    ```shell
+    $ go get github.com/segmentio/terraform-docs
+    $ go get github.com/coreos/tectonic-installer/contrib/terraform-examples
+    ```
 
 ### Contribution Flow
 
@@ -46,23 +51,18 @@ This is a rough outline of what a contributor's workflow looks like:
 - Make sure your commit messages are in the proper format (see below).
 - Push your changes to a topic branch in your fork of the repository.
 - Make sure the tests pass, and add any new tests as appropriate.
-  - Please run the following commands, at a minimum, before submitting your
-  pull request:
-```shell
-$ terraform fmt .
-$ make examples
-$ make docs
-$ make structure-check
-```
+- Please run this command before submitting your pull request:
+    ```shell
+    $ make structure-check
+    ```
+- Note that a portion of the docs and examples are generated and that the generated files are to be committed by you. `make structure-check` checks that what is generated is what you must commit.
 - Submit a pull request to the original repository.
 
 Thanks for your contributions!
 
 ## Coding Style
 
-CoreOS projects written in Go follow a set of style guidelines that we've documented in [Go at CoreOS][coreos-golang]. Please follow them when
-working on your contributions.
-
+The coding style suggested by the Golang community is used in tectonic-installer. See the [style doc][golang-style] for details. Please follow them when working on your contributions.
 
 Tectonic Installer includes syntax checks on the Terraform templates which will fail the PR checker for non-standard formatted code.
 
@@ -101,5 +101,5 @@ git tools.
 
 [modify-installer]: Documentation/contrib/modify-installer.md
 [tf-doc]: https://www.terraform.io/docs/index.html
-[coreos-golang]: https://github.com/coreos/docs/tree/master/golang
+[golang-style]: https://github.com/golang/go/wiki/CodeReviewComments
 [disclosure]: https://coreos.com/security/disclosure/

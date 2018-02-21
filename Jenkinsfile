@@ -6,25 +6,16 @@
 3. CoreOS does not ship with `make`, so Docker builds still have to use small scripts.
 */
 
-def creds = [
+commonCreds = [
   file(credentialsId: 'tectonic-license', variable: 'TF_VAR_tectonic_license_path'),
   file(credentialsId: 'tectonic-pull', variable: 'TF_VAR_tectonic_pull_secret_path'),
-  [
-    $class: 'UsernamePasswordMultiBinding',
-    credentialsId: 'azure-smoke-ssh-key',
-    passwordVariable: 'AZURE_SMOKE_SSH_KEY',
-    usernameVariable: 'AZURE_SMOKE_SSH_KEY_PUB'
-  ],
-  [
-    $class: 'UsernamePasswordMultiBinding',
-    credentialsId: 'tectonic-console-login',
-    passwordVariable: 'TF_VAR_tectonic_admin_email',
-    usernameVariable: 'TF_VAR_tectonic_admin_password_hash'
-  ],
-  [
-    $class: 'AmazonWebServicesCredentialsBinding',
-    credentialsId: 'tectonic-jenkins-installer'
-  ],
+  file(credentialsId: 'GCP-APPLICATION', variable: 'GOOGLE_APPLICATION_CREDENTIALS'),
+  string(credentialsId: 'AWS-TECTONIC-ROLE-NAME', variable: 'TF_VAR_tectonic_aws_installer_role'),
+  usernamePassword(
+    credentialsId: 'jenkins-log-analyzer-user',
+    passwordVariable: 'LOG_ANALYZER_PASSWORD',
+    usernameVariable: 'LOG_ANALYZER_USER'
+  ),
   [
     $class: 'AzureCredentialsBinding',
     credentialsId: 'azure-tectonic-test-service-principal',
@@ -32,10 +23,40 @@ def creds = [
     clientIdVariable: 'ARM_CLIENT_ID',
     clientSecretVariable: 'ARM_CLIENT_SECRET',
     tenantIdVariable: 'ARM_TENANT_ID'
+  ],
+  [
+    $class: 'StringBinding',
+    credentialsId: 'github-coreosbot',
+    variable: 'GITHUB_CREDENTIALS'
   ]
 ]
 
-def quay_creds = [
+credsUI = commonCreds.collect()
+credsUI.push(
+  [
+    $class: 'AmazonWebServicesCredentialsBinding',
+    credentialsId: 'TF-TECTONIC-JENKINS'
+  ]
+)
+
+creds = commonCreds.collect()
+creds.push(
+  [
+    $class: 'AmazonWebServicesCredentialsBinding',
+    credentialsId: 'TF-TECTONIC-JENKINS-NO-SESSION'
+  ]
+)
+
+govcloudCreds = commonCreds.collect()
+govcloudCreds.push(
+    usernamePassword(
+      credentialsId: 'tectonic-jenkins-installer-govcloud',
+      passwordVariable: 'AWS_SECRET_ACCESS_KEY',
+      usernameVariable: 'AWS_ACCESS_KEY_ID'
+    )
+)
+
+quayCreds = [
   usernamePassword(
     credentialsId: 'quay-robot',
     passwordVariable: 'QUAY_ROBOT_SECRET',
@@ -43,20 +64,85 @@ def quay_creds = [
   )
 ]
 
-def default_builder_image = 'quay.io/coreos/tectonic-builder:v1.35'
+defaultBuilderImage = 'quay.io/coreos/tectonic-builder:v1.44'
+tectonicSmokeTestEnvImage = 'quay.io/coreos/tectonic-smoke-test-env:v5.16'
+tectonicBazelImage = 'quay.io/coreos/tectonic-builder:bazel-v0.3'
+originalCommitId = 'UNKNOWN'
 
 pipeline {
   agent none
+  environment {
+    KUBE_CONFORMANCE_IMAGE = 'quay.io/coreos/kube-conformance:v1.8.4_coreos.0'
+    LOGSTASH_BUCKET= "log-analyzer-tectonic-installer"
+  }
   options {
-    timeout(time:70, unit:'MINUTES')
+    // Individual steps have stricter timeouts. 360 minutes should be never reached.
+    timeout(time:6, unit:'HOURS')
     timestamps()
-    buildDiscarder(logRotator(numToKeepStr:'100'))
+    buildDiscarder(logRotator(numToKeepStr:'20', artifactNumToKeepStr: '20'))
   }
   parameters {
     string(
       name: 'builder_image',
-      defaultValue: default_builder_image,
+      defaultValue: defaultBuilderImage,
       description: 'tectonic-builder docker image to use for builds'
+    )
+    string(
+      name: 'hyperkube_image',
+      defaultValue: '',
+      description: 'Hyperkube image. Please define the param like: {hyperkube="<HYPERKUBE_IMAGE>"}'
+    )
+    booleanParam(
+      name: 'RUN_CONFORMANCE_TESTS',
+      defaultValue: false,
+      description: ''
+    )
+    booleanParam(
+      name: 'RUN_SMOKE_TESTS',
+      defaultValue: true,
+      description: ''
+    )
+    booleanParam(
+      name: 'RUN_GUI_TESTS',
+      defaultValue: true,
+      description: ''
+    )
+    string(
+      name: 'COMPONENT_TEST_IMAGES',
+      defaultValue: '',
+      description: 'List of container images for component tests to run (comma-separated)'
+    )
+    booleanParam(
+      name: 'PLATFORM/AWS',
+      defaultValue: true,
+      description: ''
+    )
+    booleanParam(
+      name: 'PLATFORM/GOVCLOUD',
+      defaultValue: true,
+      description: ''
+    )
+    booleanParam(
+      name: 'PLATFORM/AZURE',
+      defaultValue: true,
+      description: ''
+    )
+    /* Disabled until we start the work again on gcp
+    booleanParam(
+      name: 'PLATFORM/GCP',
+      defaultValue: false,
+      description: ''
+    )
+    */
+    booleanParam(
+      name: 'PLATFORM/BARE_METAL',
+      defaultValue: true,
+      description: ''
+    )
+    booleanParam(
+      name: 'NOTIFY_SLACK',
+      defaultValue: false,
+      description: ''
     )
   }
 
@@ -68,559 +154,191 @@ pipeline {
       }
       steps {
         node('worker && ec2') {
-          withDockerContainer(params.builder_image) {
-            ansiColor('xterm') {
-              checkout scm
-              sh """#!/bin/bash -ex
-              mkdir -p \$(dirname $GO_PROJECT) && ln -sf $WORKSPACE $GO_PROJECT
+          script {
+            def err = null
+            try {
+              timeout(time: 20, unit: 'MINUTES') {
+                forcefullyCleanWorkspace()
+                checkout scm
+                stash name: 'clean-repo', excludes: 'installer/vendor/**,tests/smoke/vendor/**'
+                originalCommitId = sh(returnStdout: true, script: 'git rev-parse origin/"\${BRANCH_NAME}"')
+                echo "originalCommitId: ${originalCommitId}"
 
-              # TODO: Remove me.
-              go get github.com/segmentio/terraform-docs
-              go get github.com/s-urbaniak/terraform-examples
+                withDockerContainer(tectonicBazelImage) {
+                  sh "bazel test terraform_fmt --test_output=all"
+                  sh "bazel test installer/frontend:unit --test_output=all"
+                  sh"""#!/bin/bash -ex
+                    bazel build tarball tests/smoke
 
-              cd $GO_PROJECT/
-              make structure-check
-              make bin/smoke
+                    # Jenkins `stash` does not follow symlinks - thereby temporarily copy the files to the root dir
+                    cp bazel-bin/tectonic.tar.gz .
+                    cp bazel-bin/tests/smoke/linux_amd64_stripped/smoke .
+                  """
+                  stash name: 'tectonic.tar.gz', includes: 'tectonic.tar.gz'
+                  stash name: 'smoke-tests', includes: 'smoke'
+                  archiveArtifacts allowEmptyArchive: true, artifacts: 'tectonic.tar.gz'
+                }
 
-              cd $GO_PROJECT/installer
-              make clean
-              make tools
-              make build
+                withDockerContainer(params.builder_image) {
+                  ansiColor('xterm') {
+                    sh """#!/bin/bash -ex
+                    mkdir -p \$(dirname $GO_PROJECT) && ln -sf $WORKSPACE $GO_PROJECT
 
-              make dirtycheck
-              make lint
-              make test
-              rm -fr frontend/tests_output
-              """
-              stash name: 'installer', includes: 'installer/bin/linux/installer'
-              stash name: 'node_modules', includes: 'installer/frontend/node_modules/**'
-              stash name: 'smoke', includes: 'bin/smoke'
+                    cd $GO_PROJECT/
+                    make structure-check
+                    """
+                  }
+                }
+                withDockerContainer(tectonicSmokeTestEnvImage) {
+                  sh"""#!/bin/bash -ex
+                    cd tests/rspec
+                    rubocop --cache false spec lib
+                  """
+                }
+              }
+            } catch (error) {
+              err = error
+              throw error
+            } finally {
+              reportStatusToGithub((err == null) ? 'success' : 'failure', 'basic-tests', originalCommitId)
             }
           }
         }
       }
     }
 
-    stage("Tests") {
+    stage('GUI Tests') {
+      when {
+        expression {
+          return params.RUN_GUI_TESTS
+        }
+      }
       environment {
-        TECTONIC_INSTALLER_ROLE = 'tectonic-installer'
-        GRAFITI_DELETER_ROLE = 'grafiti-deleter'
+        TECTONIC_INSTALLER_ROLE = 'tf-tectonic-installer'
+        GRAFITI_DELETER_ROLE = 'tf-grafiti'
+        TF_VAR_tectonic_container_images = "${params.hyperkube_image}"
       }
       steps {
-        parallel (
-          "SmokeTest TerraForm: AWS": {
-            node('worker && ec2') {
-              withCredentials(creds) {
-                withDockerContainer(args: '-v /etc/passwd:/etc/passwd:ro', image: params.builder_image) {
-                  ansiColor('xterm') {
-                    checkout scm
-                    unstash 'installer'
-                    unstash 'smoke'
-                    script {
-                      try {
-                        timeout(45) {
-                          sh """#!/bin/bash -ex
-                          . ${WORKSPACE}/tests/smoke/aws/smoke.sh assume-role "$TECTONIC_INSTALLER_ROLE"
-                          ${WORKSPACE}/tests/smoke/aws/smoke.sh plan vars/aws-tls.tfvars
-                          ${WORKSPACE}/tests/smoke/aws/smoke.sh create vars/aws-tls.tfvars | tee ${WORKSPACE}/terraform.log
-                          ${WORKSPACE}/tests/smoke/aws/smoke.sh test vars/aws-tls.tfvars
-                          ${WORKSPACE}/tests/smoke/aws/smoke.sh destroy vars/aws-tls.tfvars
-                          """
-                        }
-                      } catch (err) {
-                        timeout (5) {
-                          sshagent(['aws-smoke-test-ssh-key']) {
-                            sh """#!/bin/bash
-                            # Running without -ex because we don't care if this fails
-                            . ${WORKSPACE}/tests/smoke/aws/smoke.sh common vars/aws-tls.tfvars
-                            ${WORKSPACE}/tests/smoke/aws/cluster-foreach.sh ${WORKSPACE}/tests/smoke/forensics.sh
-                            """
-                          }
-                        }
-                        timeout(5) {
-                          sh """#!/bin/bash -x
-                          . ${WORKSPACE}/tests/smoke/aws/smoke.sh assume-role "$GRAFITI_DELETER_ROLE"
-                          ${WORKSPACE}/tests/smoke/aws/smoke.sh grafiti-clean vars/aws-tls.tfvars
-                          """
-                        }
-
-                        // Stage should fail
-                        throw err
-                      }
-                    }
-                    deleteDir()
-                  }
-                }
-              }
-            }
-          },
-          "SmokeTest TerraForm: AWS (non-TLS)": {
-            node('worker && ec2') {
-              withCredentials(creds) {
-                withDockerContainer(params.builder_image) {
-                  ansiColor('xterm') {
-                    checkout scm
-                    unstash 'installer'
-                    timeout(5) {
-                      sh """#!/bin/bash -ex
-                      . ${WORKSPACE}/tests/smoke/aws/smoke.sh assume-role "$TECTONIC_INSTALLER_ROLE"
-                      ${WORKSPACE}/tests/smoke/aws/smoke.sh plan vars/aws.tfvars
-                      """
-                    }
-                    deleteDir()
-                  }
-                }
-              }
-            }
-          },
-          "SmokeTest TerraForm: AWS (experimental)": {
-            node('worker && ec2') {
-              withCredentials(creds) {
-                withDockerContainer(params.builder_image) {
-                  ansiColor('xterm') {
-                    checkout scm
-                    unstash 'installer'
-                    timeout(5) {
-                      sh """#!/bin/bash -ex
-                      . ${WORKSPACE}/tests/smoke/aws/smoke.sh assume-role "$TECTONIC_INSTALLER_ROLE"
-                      ${WORKSPACE}/tests/smoke/aws/smoke.sh plan vars/aws-exp.tfvars
-                      """
-                    }
-                    deleteDir()
-                  }
-                }
-              }
-            }
-          },
-          "SmokeTest TerraForm: AWS (network policy)": {
-            node('worker && ec2') {
-              withCredentials(creds) {
-                withDockerContainer(params.builder_image) {
-                  ansiColor('xterm') {
-                    checkout scm
-                    unstash 'installer'
-                    unstash 'smoke'
-                    timeout(45) {
-                      sh """#!/bin/bash -ex
-                      . ${WORKSPACE}/tests/smoke/aws/smoke.sh assume-role "$TECTONIC_INSTALLER_ROLE"
-                      ${WORKSPACE}/tests/smoke/aws/smoke.sh plan vars/aws-net-policy.tfvars
-                      ${WORKSPACE}/tests/smoke/aws/smoke.sh create vars/aws-net-policy.tfvars
-                      ${WORKSPACE}/tests/smoke/aws/smoke.sh test vars/aws-net-policy.tfvars
-                      """
-                    }
-                    catchError {
-                      timeout (5) {
-                        sshagent(['aws-smoke-test-ssh-key']) {
-                          sh """#!/bin/bash
-                          # Running without -ex because we don't care if this fails
-                          . ${WORKSPACE}/tests/smoke/aws/smoke.sh common vars/aws-net-policy.tfvars
-                          ${WORKSPACE}/tests/smoke/aws/cluster-foreach.sh ${WORKSPACE}/tests/smoke/forensics.sh
-                          """
-                        }
-                      }
-                    }
-                    retry(3) {
-                      timeout(15) {
+        script {
+          def err = null
+          try {
+            parallel (
+              "IntegrationTest AWS Installer Gui": {
+                node('worker && ec2') {
+                  timeout(time: 20, unit: 'MINUTES') {
+                    withCredentials(credsUI) {
+                      withDockerContainer(tectonicBazelImage)  {
+                        unstash 'clean-repo'
                         sh """#!/bin/bash -ex
-                        . ${WORKSPACE}/tests/smoke/aws/smoke.sh assume-role "$TECTONIC_INSTALLER_ROLE"
-                        ${WORKSPACE}/tests/smoke/aws/smoke.sh destroy vars/aws-net-policy.tfvars
+                        bazel test installer:aws_gui --action_env=AWS_ACCESS_KEY_ID --action_env=AWS_SECRET_ACCESS_KEY --action_env=TF_VAR_tectonic_license_path --action_env=TF_VAR_tectonic_pull_secret_path --action_env=AWS_SESSION_TOKEN --test_output=all
                         """
-                      }
-                    }
-                    deleteDir()
-                  }
-                }
-              }
-            }
-          },
-          "SmokeTest TerraForm: AWS (custom ca)": {
-            node('worker && ec2') {
-              withCredentials(creds) {
-                withDockerContainer(params.builder_image) {
-                  ansiColor('xterm') {
-                    checkout scm
-                    unstash 'installer'
-                    timeout(5) {
-                      sh """#!/bin/bash -ex
-                      . ${WORKSPACE}/tests/smoke/aws/smoke.sh assume-role "$TECTONIC_INSTALLER_ROLE"
-                      ${WORKSPACE}/tests/smoke/aws/smoke.sh plan vars/aws-ca.tfvars
-                      """
-                    }
-                    deleteDir()
-                  }
-                }
-              }
-            }
-          },
-          "SmokeTest TerraForm: AWS (private vpc)": {
-            node('worker && ec2') {
-              withCredentials(creds) {
-                withDockerContainer(image: params.builder_image, args: '--device=/dev/net/tun --cap-add=NET_ADMIN -u root') {
-                  ansiColor('xterm') {
-                    checkout scm
-                    unstash 'installer'
-                    unstash 'smoke'
-                    script {
-                      try {
-                        timeout(45) {
-                          sh """#!/bin/bash -ex
-                          . ${WORKSPACE}/tests/smoke/aws/smoke.sh create-vpc
-                          ${WORKSPACE}/tests/smoke/aws/smoke.sh plan vars/aws-vpc.tfvars
-                          ${WORKSPACE}/tests/smoke/aws/smoke.sh create vars/aws-vpc.tfvars | tee ${WORKSPACE}/terraform.log
-                          ${WORKSPACE}/tests/smoke/aws/smoke.sh test vars/aws-vpc.tfvars
-                          ${WORKSPACE}/tests/smoke/aws/smoke.sh destroy vars/aws-vpc.tfvars
-                          ${WORKSPACE}/tests/smoke/aws/smoke.sh destroy-vpc
-                          """
-                        }
-                      } catch (err) {
-                        timeout(15) {
-                          sh """#!/bin/bash -x
-                          ${WORKSPACE}/tests/smoke/aws/smoke.sh destroy vars/aws-vpc.tfvars
-                          ${WORKSPACE}/tests/smoke/aws/smoke.sh destroy-vpc
-                          """
-                        }
-                        timeout(5) {
-                          sh """#!/bin/bash -x
-                          . ${WORKSPACE}/tests/smoke/aws/smoke.sh assume-role "$GRAFITI_DELETER_ROLE"
-                          ${WORKSPACE}/tests/smoke/aws/smoke.sh grafiti-clean vars/aws-vpc.tfvars
-                          """
-                        }
-
-                        // Stage should fail
-                        throw err
-                      } finally {
-                        sh """#!/bin/bash -ex
-                        # As /build is created by root, make sure to remove it again
-                        # so non-root can create it later.
-                        rm -r ${WORKSPACE}/build
-                        """
-                      }
-                    }
-                    deleteDir()
-                  }
-                }
-              }
-            }
-          },
-          "SmokeTest: Azure": {
-            node('worker && ec2') {
-              withCredentials(creds) {
-                withDockerContainer(params.builder_image) {
-                  sshagent(['azure-smoke-ssh-key-kind-ssh']) {
-                    ansiColor('xterm') {
-                      checkout scm
-                      unstash 'installer'
-                      unstash 'smoke'
-                      script {
-                        try {
-                          timeout(45) {
-                            sh """#!/bin/bash -ex
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh plan vars/basic.tfvars
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh create vars/basic.tfvars
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh test vars/basic.tfvars
-
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh destroy vars/basic.tfvars
-                          """
-                          }
-                        }
-                        catch (error) {
-                            throw error
-                        }
-                        finally {
-                          retry(3) {
-                            timeout(15) {
-                              sh """#!/bin/bash -x
-                                ${WORKSPACE}/tests/smoke/azure/smoke.sh destroy vars/basic.tfvars
-                              """
-                            }
-                          }
-                          deleteDir()
-                        }
+                        cleanWs notFailBuild: true
                       }
                     }
                   }
                 }
               }
-            }
-          },
-          "SmokeTest: Azure (Experimental)": {
+            )
+          } catch (error) {
+            err = error
+            throw error
+          } finally {
             node('worker && ec2') {
-              withCredentials(creds) {
-                withDockerContainer(params.builder_image) {
-                  sshagent(['azure-smoke-ssh-key-kind-ssh']) {
-                    ansiColor('xterm') {
-                      checkout scm
-                      unstash 'installer'
-                      unstash 'smoke'
-                      script {
-                        try {
-                          timeout(45) {
-                            sh """#!/bin/bash -ex
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh plan vars/exper.tfvars
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh create vars/exper.tfvars
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh test vars/exper.tfvars
-
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh destroy vars/exper.tfvars
-                          """
-                          }
-                        }
-                        catch (error) {
-                            throw error
-                        }
-                        finally {
-                          retry(3) {
-                            timeout(15) {
-                                sh """#!/bin/bash -x
-                                ${WORKSPACE}/tests/smoke/azure/smoke.sh destroy vars/exper.tfvars
-                                """
-                            }
-                          }
-                          deleteDir()
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-/*
- * Test temporarily disabled
- *
-          "SmokeTest: Azure (existing DNS)": {
-            node('worker && ec2') {
-              withCredentials(creds) {
-                withDockerContainer(params.builder_image) {
-                  sshagent(['azure-smoke-ssh-key-kind-ssh']) {
-                    ansiColor('xterm') {
-                      checkout scm
-                      unstash 'installer'
-                      unstash 'smoke'
-                      script {
-                        try {
-                          timeout(45) {
-                            sh """#!/bin/bash -ex
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh plan vars/dns.tfvars
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh create vars/dns.tfvars
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh test vars/dns.tfvars
-
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh destroy vars/dns.tfvars
-                          """
-                          }
-                        }
-                        catch (error) {
-                            throw error
-                        }
-                        finally {
-                          retry(3) {
-                            timeout(15) {
-                                sh """#!/bin/bash -x
-                                ${WORKSPACE}/tests/smoke/azure/smoke.sh destroy vars/dns.tfvars
-                                """
-                            }
-                          }
-                          deleteDir()
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-*/
-          "SmokeTest: Azure (external network)": {
-            node('worker && ec2') {
-              withCredentials(creds) {
-                withDockerContainer(params.builder_image) {
-                  sshagent(['azure-smoke-ssh-key-kind-ssh']) {
-                    ansiColor('xterm') {
-                      checkout scm
-                      unstash 'installer'
-                      unstash 'smoke'
-                      script {
-                        try {
-                          timeout(45) {
-                            sh """#!/bin/bash -ex
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh plan vars/extern.tfvars
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh create vars/extern.tfvars
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh test vars/extern.tfvars
-
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh destroy vars/extern.tfvars
-                          """
-                          }
-                        }
-                        catch (error) {
-                            throw error
-                        }
-                        finally {
-                          retry(3) {
-                            timeout(15) {
-                                sh """#!/bin/bash -x
-                                ${WORKSPACE}/tests/smoke/azure/smoke.sh destroy vars/extern.tfvars
-                                """
-                            }
-                          }
-                          deleteDir()
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "SmokeTest: Azure (external network, experimental)": {
-            node('worker && ec2') {
-              withCredentials(creds) {
-                withDockerContainer(params.builder_image) {
-                  sshagent(['azure-smoke-ssh-key-kind-ssh']) {
-                    ansiColor('xterm') {
-                      checkout scm
-                      unstash 'installer'
-                      unstash 'smoke'
-                      script {
-                        try {
-                          timeout(45) {
-                            sh """#!/bin/bash -ex
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh plan vars/extern-exper.tfvars
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh create vars/extern-exper.tfvars
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh test vars/extern-exper.tfvars
-
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh destroy vars/extern-exper.tfvars
-                          """
-                          }
-                        }
-                        catch (error) {
-                            throw error
-                        }
-                        finally {
-                          retry(3) {
-                            timeout(15) {
-                                sh """#!/bin/bash -x
-                                ${WORKSPACE}/tests/smoke/azure/smoke.sh destroy vars/extern-exper.tfvars
-                                """
-                            }
-                          }
-                          deleteDir()
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "SmokeTest: Azure (example file)": {
-            node('worker && ec2') {
-              withCredentials(creds) {
-                withDockerContainer(params.builder_image) {
-                  sshagent(['azure-smoke-ssh-key-kind-ssh']) {
-                    ansiColor('xterm') {
-                      checkout scm
-                      unstash 'installer'
-                      unstash 'smoke'
-                      script {
-                        try {
-                          timeout(45) {
-                            sh """#!/bin/bash -ex
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh plan vars/example.tfvars
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh create vars/example.tfvars
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh test vars/example.tfvars
-
-                            ${WORKSPACE}/tests/smoke/azure/smoke.sh destroy vars/example.tfvars
-                          """
-                          }
-                        }
-                        catch (error) {
-                            throw error
-                        }
-                        finally {
-                          retry(3) {
-                            timeout(15) {
-                                sh """#!/bin/bash -x
-                                ${WORKSPACE}/tests/smoke/azure/smoke.sh destroy vars/example.tfvars
-                                """
-                            }
-                          }
-                          deleteDir()
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "SmokeTest: Bare Metal": {
-            node('worker && bare-metal') {
-              ansiColor('xterm') {
-                checkout scm
-                unstash 'installer'
-                unstash 'smoke'
-                withCredentials(creds) {
-                  timeout(35) {
-                    sh """#!/bin/bash -ex
-                    ${WORKSPACE}/tests/smoke/bare-metal/smoke.sh vars/metal.tfvars
-                    """
-                  }
-                  deleteDir()
-                }
-              }
-            }
-          },
-          "IntegrationTest AWS Installer Gui": {
-            node('worker && ec2') {
-              withCredentials(creds) {
-                withDockerContainer(params.builder_image) {
-                  ansiColor('xterm') {
-                    checkout scm
-                    unstash 'installer'
-                    unstash 'node_modules'
-                    sh """#!/bin/bash -ex
-                    cd installer
-                    make launch-aws-installer-guitests
-                    make gui-aws-tests-cleanup
-                    """
-                    deleteDir()
-                  }
-                }
-              }
-            }
-          },
-          "IntegrationTest Baremetal Installer Gui": {
-            node('worker && ec2') {
-              withCredentials(creds) {
-                withDockerContainer(image: params.builder_image, args: '-u root') {
-                  ansiColor('xterm') {
-                    checkout scm
-                    unstash 'installer'
-                    unstash 'node_modules'
-                    script {
-                      try {
-                        sh """#!/bin/bash -ex
-                        cd installer
-                        make launch-baremetal-installer-guitests
-                        """
-                      }
-                      catch (error) {
-                        throw error
-                      }
-                      finally {
-                        sh """#!/bin/bash -x
-                        cd installer
-                        make gui-baremetal-tests-cleanup
-                        make clean
-                        """
-                        deleteDir()
-                      }
-                    }
-                  }
-                }
-              }
+              unstash 'clean-repo'
+              reportStatusToGithub((err == null) ? 'success' : 'failure', 'gui-tests', originalCommitId)
             }
           }
-        )
+        }
+      }
+    }
+
+    stage("Smoke Tests") {
+      when {
+        expression {
+          return params.RUN_SMOKE_TESTS || params.RUN_CONFORMANCE_TESTS || params.COMPONENT_TEST_IMAGES != ''
+        }
+      }
+      environment {
+        TECTONIC_INSTALLER_ROLE = 'tf-tectonic-installer'
+        GRAFITI_DELETER_ROLE = 'tf-grafiti'
+        TF_VAR_tectonic_container_images = "${params.hyperkube_image}"
+        TF_VAR_tectonic_kubelet_debug_config = "--minimum-container-ttl-duration=8h --maximum-dead-containers-per-container=9999 --maximum-dead-containers=9999"
+        GOOGLE_PROJECT = "tectonic-installer"
+      }
+      steps {
+        script {
+          def builds = [:]
+          def aws = [
+            [file: 'basic_spec.rb', args: ''],
+            [file: 'vpc_internal_spec.rb', args: '--device=/dev/net/tun --cap-add=NET_ADMIN -u root'],
+            [file: 'network_flannel_spec.rb', args: ''],
+            [file: 'exp_spec.rb', args: ''],
+            [file: 'ca_spec.rb', args: ''],
+            [file: 'custom_tls_spec.rb', args: '']
+          ]
+          def govcloud = [
+            [file: 'vpc_internal_spec.rb', args: '--device=/dev/net/tun --cap-add=NET_ADMIN -u root']
+          ]
+          def azure = [
+            [file: 'basic_spec.rb', args: ''],
+            [file: 'private_external_spec.rb', args: '--device=/dev/net/tun --cap-add=NET_ADMIN -u root'],
+            /*
+            * Test temporarily disabled
+            [file: 'spec/azure_dns_spec.rb', args: ''],
+            */
+            [file: 'external_spec.rb', args: ''],
+            [file: 'example_spec.rb', args: ''],
+            [file: 'custom_tls_spec.rb', args: '']
+          ]
+          def gcp = [
+          /* Disabled until we start the work again on gcp
+           *  [file: 'basic_spec.rb', args: ''],
+            [file: 'ha_spec.rb', args: ''],
+            [file: 'custom_tls_spec.rb', args: '']
+           */
+          ]
+
+          def metal = [
+            [file: 'basic_spec.rb', args: ''],
+            [file: 'custom_tls_spec.rb', args: '']
+          ]
+
+          if (params."PLATFORM/AWS") {
+            aws.each { build ->
+              filepath = 'spec/aws/' + build.file
+              builds['aws/' + build.file] = runRSpecTest(filepath, build.args, creds)
+            }
+          }
+
+          if (params."PLATFORM/GOVCLOUD") {
+            govcloud.each { build ->
+              filepath = 'spec/govcloud/' + build.file
+              builds['govcloud/' + build.file] = runRSpecTest(filepath, build.args, govcloudCreds)
+            }
+          }
+
+          if (params."PLATFORM/AZURE") {
+            azure.each { build ->
+              filepath = 'spec/azure/' + build.file
+              builds['azure/' + build.file] = runRSpecTest(filepath, build.args, creds)
+            }
+          }
+
+          if (params."PLATFORM/GCP") {
+            gcp.each { build ->
+              filepath = 'spec/gcp/' + build.file
+              builds['gcp/' + build.file] = runRSpecTest(filepath, build.args, creds)
+            }
+          }
+
+          if (params."PLATFORM/BARE_METAL") {
+            metal.each { build ->
+              filepath = 'spec/metal/' + build.file
+              builds['metal/' + build.file] = runRSpecTestBareMetal(filepath, creds)
+            }
+          }
+          parallel builds
+        }
       }
     }
 
@@ -630,21 +348,204 @@ pipeline {
       }
       steps {
         node('worker && ec2') {
-          withCredentials(quay_creds) {
+          forcefullyCleanWorkspace()
+          withCredentials(quayCreds) {
             ansiColor('xterm') {
-              checkout scm
-              unstash 'installer'
+              unstash 'clean-repo'
               sh """
                 docker build -t quay.io/coreos/tectonic-installer:master -f images/tectonic-installer/Dockerfile .
                 docker login -u="$QUAY_ROBOT_USERNAME" -p="$QUAY_ROBOT_SECRET" quay.io
                 docker push quay.io/coreos/tectonic-installer:master
                 docker logout quay.io
               """
-              deleteDir()
+              cleanWs notFailBuild: true
             }
           }
         }
       }
     }
+
   }
+  post {
+    always {
+      node('worker && ec2') {
+        forcefullyCleanWorkspace()
+        echo "Starting with streaming the logfile to the S3 bucket"
+        withDockerContainer(params.builder_image) {
+          withCredentials(credsUI) {
+            unstash 'clean-repo'
+            script {
+              try {
+                sh """#!/bin/bash -xe
+                export BUILD_RESULT=${currentBuild.currentResult}
+                ./tests/jenkins-jobs/scripts/log-analyzer-copy.sh jenkins-logs
+                """
+              } catch (Exception e) {
+                notifyBuildSlack()
+              } finally {
+                cleanWs notFailBuild: true
+              }
+            }
+          }
+        }
+      }
+    }
+
+    failure {
+      script {
+        if (params.NOTIFY_SLACK) {
+          echo 'Sending notification to slack...'
+          notifyBuildSlack()
+          echo 'Slack notifacation sent.'
+        }
+      }
+    }
+  }
+}
+
+def forcefullyCleanWorkspace() {
+  return withDockerContainer(
+    image: tectonicSmokeTestEnvImage,
+    args: '-u root'
+  ) {
+    ansiColor('xterm') {
+      sh """#!/bin/bash -e
+        if [ -d "\$WORKSPACE" ]
+        then
+          rm -rfv \$WORKSPACE/*
+        fi
+      """
+    }
+  }
+}
+
+def unstashCleanRepoTectonicTarGZSmokeTests() {
+  unstash 'clean-repo'
+  unstash 'tectonic.tar.gz'
+  unstash 'smoke-tests'
+  sh """#!/bin/bash -ex
+    # Jenkins `stash` does not follow symlinks - thereby temporarily copy the files to the root dir
+    mkdir -p bazel-bin/tests/smoke/linux_amd64_stripped/
+    cp tectonic.tar.gz bazel-bin/.
+    cp smoke bazel-bin/tests/smoke/linux_amd64_stripped/.
+  """
+}
+
+def runRSpecTest(testFilePath, dockerArgs, credentials) {
+  return {
+    node('worker && ec2') {
+      def err = null
+      try {
+        timeout(time: 5, unit: 'HOURS') {
+          forcefullyCleanWorkspace()
+          ansiColor('xterm') {
+            withCredentials(credentials + quayCreds) {
+              withDockerContainer(
+                image: tectonicSmokeTestEnvImage,
+                args: '-u root -v /var/run/docker.sock:/var/run/docker.sock ' + dockerArgs
+              ) {
+                unstashCleanRepoTectonicTarGZSmokeTests()
+                sh """#!/bin/bash -ex
+                  mkdir -p templogfiles && chmod 777 templogfiles
+                  cd tests/rspec
+
+                  # Directing test output both to stdout as well as a log file
+                  rspec ${testFilePath} --format RspecTap::Formatter --format RspecTap::Formatter --out ../../templogfiles/format=tap.log
+                """
+              }
+            }
+          }
+        }
+      } catch (error) {
+        err = error
+        throw error
+      } finally {
+        reportStatusToGithub((err == null) ? 'success' : 'failure', testFilePath, originalCommitId)
+        step([$class: "TapPublisher", testResults: "templogfiles/*", outputTapToConsole: true, planRequired: false])
+        archiveArtifacts allowEmptyArchive: true, artifacts: 'bazel-bin/tectonic/build/**/logs/**'
+        withDockerContainer(params.builder_image) {
+         withCredentials(credsUI) {
+          script {
+            try {
+              sh """#!/bin/bash -xe
+              ./tests/jenkins-jobs/scripts/log-analyzer-copy.sh smoke-test-logs ${testFilePath}
+              """
+            } catch (Exception e) {
+              notifyBuildSlack(true)
+            } finally {
+              cleanWs notFailBuild: true
+            }
+          }
+         }
+        }
+        cleanWs notFailBuild: true
+      }
+
+    }
+  }
+}
+
+def runRSpecTestBareMetal(testFilePath, credentials) {
+  return {
+    node('worker && bare-metal') {
+      def err = null
+      try {
+        timeout(time: 5, unit: 'HOURS') {
+          ansiColor('xterm') {
+            unstashCleanRepoTectonicTarGZSmokeTests()
+            withCredentials(credentials + quayCreds) {
+              sh """#!/bin/bash -ex
+              cd tests/rspec
+              export RBENV_ROOT=/usr/local/rbenv
+              export PATH="/usr/local/rbenv/bin:$PATH"
+              eval \"\$(rbenv init -)\"
+              rbenv install -s
+              gem install bundler
+              bundler install
+              bundler exec rspec ${testFilePath} --format RspecTap::Formatter --format RspecTap::Formatter --out ../../templogfiles/format=tap.log
+              """
+            }
+          }
+        }
+      } catch (error) {
+        err = error
+        throw error
+      } finally {
+        reportStatusToGithub((err == null) ? 'success' : 'failure', testFilePath, originalCommitId)
+        step([$class: "TapPublisher", testResults: "../../templogfiles/*", outputTapToConsole: true, planRequired: false])
+        archiveArtifacts allowEmptyArchive: true, artifacts: 'bazel-bin/tectonic/build/**/logs/**'
+        withCredentials(credsUI) {
+          script {
+            try {
+              sh """#!/bin/bash -xe
+              ./tests/jenkins-jobs/scripts/log-analyzer-copy.sh smoke-test-logs ${testFilePath}
+              """
+            } catch (Exception e) {
+              notifyBuildSlack(true)
+            } finally {
+              cleanWs notFailBuild: true
+            }
+          }
+         }
+        cleanWs notFailBuild: true
+      }
+    }
+  }
+}
+
+def reportStatusToGithub(status, context, commitId) {
+  withCredentials(creds) {
+    sh """#!/bin/bash -ex
+      ./tests/jenkins-jobs/scripts/report-status-to-github.sh ${status} ${context} ${commitId}
+    """
+  }
+}
+
+def notifyBuildSlack() {
+  def colorCode = '#FF0000'
+  def subject = "Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+  def summary = "${subject} (${env.BUILD_URL})"
+
+  // Send notifications
+  slackSend(color: colorCode, message: summary, channel: "#team-installer")
 }

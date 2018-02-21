@@ -1,9 +1,12 @@
-data "aws_ami" "coreos_ami" {
-  most_recent = true
+locals {
+  ami_owner = "595879546273"
+  arn       = "aws"
+}
 
+data "aws_ami" "coreos_ami" {
   filter {
     name   = "name"
-    values = ["CoreOS-${var.cl_channel}-*"]
+    values = ["CoreOS-${var.container_linux_channel}-${var.container_linux_version}-*"]
   }
 
   filter {
@@ -18,7 +21,7 @@ data "aws_ami" "coreos_ami" {
 
   filter {
     name   = "owner-id"
-    values = ["595879546273"]
+    values = ["${local.ami_owner}"]
   }
 }
 
@@ -26,11 +29,11 @@ resource "aws_autoscaling_group" "masters" {
   name                 = "${var.cluster_name}-masters"
   desired_capacity     = "${var.instance_count}"
   max_size             = "${var.instance_count * 3}"
-  min_size             = "1"
+  min_size             = "${var.instance_count}"
   launch_configuration = "${aws_launch_configuration.master_conf.id}"
   vpc_zone_identifier  = ["${var.subnet_ids}"]
 
-  load_balancers = ["${compact(concat(list(aws_elb.api-internal.id), list(aws_elb.console.id), aws_elb.api-external.*.id))}"]
+  load_balancers = ["${var.aws_lbs}"]
 
   tags = [
     {
@@ -58,13 +61,13 @@ resource "aws_autoscaling_group" "masters" {
 
 resource "aws_launch_configuration" "master_conf" {
   instance_type               = "${var.ec2_type}"
-  image_id                    = "${data.aws_ami.coreos_ami.image_id}"
+  image_id                    = "${coalesce(var.ec2_ami, data.aws_ami.coreos_ami.image_id)}"
   name_prefix                 = "${var.cluster_name}-master-"
   key_name                    = "${var.ssh_key}"
   security_groups             = ["${var.master_sg_ids}"]
   iam_instance_profile        = "${aws_iam_instance_profile.master_profile.arn}"
-  associate_public_ip_address = "${var.public_vpc}"
-  user_data                   = "${var.user_data}"
+  associate_public_ip_address = "${var.public_endpoints}"
+  user_data                   = "${data.ignition_config.s3.rendered}"
 
   lifecycle {
     create_before_destroy = true
@@ -78,7 +81,7 @@ resource "aws_launch_configuration" "master_conf" {
   root_block_device {
     volume_type = "${var.root_volume_type}"
     volume_size = "${var.root_volume_size}"
-    iops        = "${var.root_volume_type == "io1" ? var.root_volume_iops : 100}"
+    iops        = "${var.root_volume_type == "io1" ? var.root_volume_iops : 0}"
   }
 }
 
@@ -87,13 +90,13 @@ resource "aws_iam_instance_profile" "master_profile" {
 
   role = "${var.master_iam_role == "" ?
     join("|", aws_iam_role.master_role.*.name) :
-    join("|", data.aws_iam_role.master_role.*.role_name)
+    join("|", data.aws_iam_role.master_role.*.name)
   }"
 }
 
 data "aws_iam_role" "master_role" {
-  count     = "${var.master_iam_role == "" ? 0 : 1}"
-  role_name = "${var.master_iam_role}"
+  count = "${var.master_iam_role == "" ? 0 : 1}"
+  name  = "${var.master_iam_role}"
 }
 
 resource "aws_iam_role" "master_role" {
@@ -138,25 +141,13 @@ resource "aws_iam_role_policy" "master_policy" {
       "Effect": "Allow"
     },
     {
-      "Action": [
-        "ecr:GetAuthorizationToken",
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:GetDownloadUrlForLayer",
-        "ecr:GetRepositoryPolicy",
-        "ecr:DescribeRepositories",
-        "ecr:ListImages",
-        "ecr:BatchGetImage"
-      ],
-      "Resource": "*",
-      "Effect": "Allow"
-    },
-    {
       "Action" : [
         "s3:GetObject",
         "s3:HeadObject",
-        "s3:ListBucket"
+        "s3:ListBucket",
+        "s3:PutObject"
       ],
-      "Resource": "arn:aws:s3:::*",
+      "Resource": "arn:${local.arn}:s3:::*",
       "Effect": "Allow"
     },
     {

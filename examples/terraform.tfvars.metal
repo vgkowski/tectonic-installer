@@ -1,17 +1,4 @@
 
-// The e-mail address used to:
-// 1. login as the admin user to the Tectonic Console.
-// 2. generate DNS zones for some providers.
-// 
-// Note: This field MUST be set manually prior to creating the cluster.
-tectonic_admin_email = ""
-
-// The bcrypt hash of admin user password to login to the Tectonic Console.
-// Use the bcrypt-hash tool (https://github.com/coreos/bcrypt-tool/releases/tag/v1.0.0) to generate it.
-// 
-// Note: This field MUST be set manually prior to creating the cluster.
-tectonic_admin_password_hash = ""
-
 // The base DNS domain of the cluster. It must NOT contain a trailing period. Some
 // DNS providers will automatically add this if necessary.
 // 
@@ -19,6 +6,11 @@ tectonic_admin_password_hash = ""
 // 
 // Note: This field MUST be set manually prior to creating the cluster.
 // This applies only to cloud platforms.
+// 
+// [Azure-specific NOTE]
+// To use Azure-provided DNS, `tectonic_base_domain` should be set to `""`
+// If using DNS records, ensure that `tectonic_base_domain` is set to a properly configured external DNS zone.
+// Instructions for configuring delegated domains for Azure DNS can be found here: https://docs.microsoft.com/en-us/azure/dns/dns-delegate-domain-azure-dns
 tectonic_base_domain = ""
 
 // (optional) The content of the PEM-encoded CA certificate, used to generate Tectonic Console's server certificate.
@@ -30,22 +22,12 @@ tectonic_base_domain = ""
 // tectonic_ca_key = ""
 
 // (optional) The algorithm used to generate tectonic_ca_key.
-// The default value is currently recommend.
+// The default value is currently recommended.
 // This field is mandatory if `tectonic_ca_cert` is set.
 // tectonic_ca_key_alg = "RSA"
 
-// [ALPHA] If set to true, calico network policy support will be deployed.
-// WARNING: Enabling an alpha feature means that future updates may become unsupported.
-// This should only be enabled on clusters that are meant to be short-lived to begin validating the alpha feature.
-tectonic_calico_network_policy = false
-
-// The Container Linux update channel.
-// 
-// Examples: `stable`, `beta`, `alpha`
-tectonic_cl_channel = "stable"
-
-// This declares the IP range to assign Kubernetes pod IPs in CIDR notation.
-tectonic_cluster_cidr = "10.2.0.0/16"
+// (optional) This declares the IP range to assign Kubernetes pod IPs in CIDR notation.
+// tectonic_cluster_cidr = "10.2.0.0/16"
 
 // The name of the cluster.
 // If used in a cloud-environment, this will be prepended to `tectonic_base_domain` resulting in the URL to the Tectonic console.
@@ -53,6 +35,19 @@ tectonic_cluster_cidr = "10.2.0.0/16"
 // Note: This field MUST be set manually prior to creating the cluster.
 // Warning: Special characters in the name like '.' may cause errors on OpenStack platforms due to resource name constraints.
 tectonic_cluster_name = ""
+
+// (optional) The Container Linux update channel.
+// 
+// Examples: `stable`, `beta`, `alpha`
+// tectonic_container_linux_channel = "stable"
+
+// The Container Linux version to use. Set to `latest` to select the latest available version for the selected update channel.
+// 
+// Examples: `latest`, `1465.6.0`
+tectonic_container_linux_version = "latest"
+
+// (optional) A list of PEM encoded CA files that will be installed in /etc/ssl/certs on etcd, master, and worker nodes.
+// tectonic_custom_ca_pem_list = ""
 
 // (optional) This only applies if you use the modules/dns/ddns module.
 // 
@@ -74,10 +69,15 @@ tectonic_cluster_name = ""
 // Specifies the RFC2136 Dynamic DNS server IP/host to register IP addresses to.
 // tectonic_ddns_server = ""
 
+// (optional) Enable boot diagnostics for example the boot logs.
+// It is only supported for Azure cloud provider.
+// Used to collect the boot logs for debug purposes.
+// tectonic_enable_boot_diagnostics = "false"
+
 // (optional) The path of the file containing the CA certificate for TLS communication with etcd.
 // 
 // Note: This works only when used in conjunction with an external etcd cluster.
-// If set, the variables `tectonic_etcd_servers`, `tectonic_etcd_client_cert_path`, and `tectonic_etcd_client_key_path` must also be set.
+// If set, the variable `tectonic_etcd_servers` must also be set.
 // tectonic_etcd_ca_cert_path = "/dev/null"
 
 // (optional) The path of the file containing the client certificate for TLS communication with etcd.
@@ -95,37 +95,44 @@ tectonic_cluster_name = ""
 // The number of etcd nodes to be created.
 // If set to zero, the count of etcd nodes will be determined automatically.
 // 
-// Note: This is currently only supported on AWS.
+// Note: This is not supported on bare metal.
 tectonic_etcd_count = "0"
 
 // (optional) List of external etcd v3 servers to connect with (hostnames/IPs only).
 // Needs to be set if using an external etcd cluster.
+// Note: If this variable is defined, the installer will not create self-signed certs.
+// To provide a CA certificate to trust the etcd servers, set "tectonic_etcd_ca_cert_path".
 // 
 // Example: `["etcd1", "etcd2", "etcd3"]`
 // tectonic_etcd_servers = ""
 
-// (optional) If set to `true`, TLS secure communication for self-provisioned etcd. will be used.
+// (optional) HTTP proxy address.
 // 
-// Note: If `tectonic_experimental` is set to `true` this variable has no effect, because the experimental self-hosted etcd always uses TLS.
-// tectonic_etcd_tls_enabled = true
+// Example: `http://myproxy.example.com`
+// tectonic_http_proxy_address = ""
 
-// If set to true, experimental Tectonic assets are being deployed.
-tectonic_experimental = false
+// (optional) HTTPS proxy address.
+// 
+// Example: `http://myproxy.example.com`
+// tectonic_https_proxy_address = ""
+
+// (optional) Start iscsid.service to enable iscsi volume attachment.
+// tectonic_iscsi_enabled = "false"
 
 // The path to the tectonic licence file.
+// You can download the Tectonic license file from your Account overview page at [1].
 // 
-// Note: This field MUST be set manually prior to creating the cluster unless `tectonic_vanilla_k8s` is set to `true`.
+// [1] https://account.coreos.com/overview
 tectonic_license_path = ""
 
 // The number of master nodes to be created.
 // This applies only to cloud platforms.
 tectonic_master_count = "1"
 
-// CoreOS kernel/initrd version to PXE boot.
-// Must be present in Matchbox assets and correspond to `tectonic_cl_channel`.
+// (optional) Sets the MTU size for workload interfaces and the IP-in-IP tunnel device.
 // 
-// Example: `1298.7.0`
-tectonic_metal_cl_version = ""
+// Note: This setting is only effective, if tectonic_networking is set to `calico`.
+// tectonic_metal_calico_mtu = "1480"
 
 // The domain name which resolves to controller node(s)
 // 
@@ -220,24 +227,47 @@ tectonic_metal_worker_macs = ""
 // Example: `["node2", "node3"]`
 tectonic_metal_worker_names = ""
 
-// The path the pull secret file in JSON format.
+// (optional) Configures the network to be used in Tectonic. One of the following values can be used:
 // 
-// Note: This field MUST be set manually prior to creating the cluster unless `tectonic_vanilla_k8s` is set to `true`.
+// - "flannel": enables overlay networking only. This is implemented by flannel using VXLAN.
+// 
+// - "canal": enables overlay networking including network policy. Overlay is implemented by flannel using VXLAN. Network policy is implemented by Calico.
+// 
+// - "calico-ipip": [ALPHA] enables BGP based networking. Routing and network policy is implemented by Calico. Note this has been tested on baremetal installations only.
+// 
+// - "none": disables the installation of any Pod level networking layer provided by Tectonic. By setting this value, users are expected to deploy their own solution to enable network connectivity for Pods and Services.
+// tectonic_networking = "canal"
+
+// (optional) List of local endpoints that will not use HTTP proxy.
+// 
+// Example: `["127.0.0.1","localhost",".example.com","10.3.0.1"]`
+// tectonic_no_proxy = ""
+
+// The path the pull secret file in JSON format.
+// This is known to be a "Docker pull secret" as produced by the docker login [1] command.
+// A sample JSON content is shown in [2].
+// You can download the pull secret from your Account overview page at [3].
+// 
+// [1] https://docs.docker.com/engine/reference/commandline/login/
+// 
+// [2] https://coreos.com/os/docs/latest/registry-authentication.html#manual-registry-auth-setup
+// 
+// [3] https://account.coreos.com/overview
 tectonic_pull_secret_path = ""
 
-// This declares the IP range to assign Kubernetes service cluster IPs in CIDR notation. The maximum size of this IP range is /12
-tectonic_service_cidr = "10.3.0.0/16"
+// (optional) This declares the IP range to assign Kubernetes service cluster IPs in CIDR notation.
+// The maximum size of this IP range is /12
+// tectonic_service_cidr = "10.3.0.0/16"
 
 // SSH public key to use as an authorized key.
 // 
 // Example: `ssh-rsa AAAB3N...`
 tectonic_ssh_authorized_key = ""
 
-// The Tectonic statistics collection URL to which to report.
-tectonic_stats_url = "https://stats-collector.tectonic.com"
-
-// If set to true, a vanilla Kubernetes cluster will be deployed, omitting any Tectonic assets.
-tectonic_vanilla_k8s = false
+// Validity period of the self-signed certificates (in hours).
+// Default is 3 years.
+// This setting is ignored if user provided certificates are used.
+tectonic_tls_validity_period = "26280"
 
 // The number of worker nodes to be created.
 // This applies only to cloud platforms.

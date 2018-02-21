@@ -7,12 +7,17 @@ variable vpc_name {
 }
 
 variable base_domain {
-  default     = "tectonic.dev.coreos.systems"
+  default     = "tectonic-ci.de"
   description = "The base domain for this cluster's FQDN"
 }
 
 variable vpc_aws_region {
   description = "The target AWS region for the cluster"
+}
+
+variable aws_role {
+  default     = ""
+  description = "The IAM Role to assume if using role based keys"
 }
 
 variable vpc_cidr {

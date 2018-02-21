@@ -1,32 +1,21 @@
-const installerInput = require('../utils/bareMetalInstallerInput');
-const inputJson = installerInput.buildExpectedJson();
-
-const matchboxPageCommands = {
-  enterMatchBoxEndPoints() {
-    return this
-      .setValue('@matchboxHTTP', inputJson.tectonic_metal_matchbox_http_url.replace(/^http?\:\/\//i, ""))
-      .setValue('@matchboxRPC', inputJson.tectonic_metal_matchbox_rpc_endpoint)
-      .waitForElementPresent('@nextStep', 6000).click('@nextStep');
+const pageCommands = {
+  test (json) {
+    this
+      .setField('@matchboxHTTP', 'abc')
+      .expectValidationErrorContains('Invalid format')
+      .setField('@matchboxHTTP', json.matchboxHTTP)
+      .expectNoValidationError()
+      .setField('@matchboxRPC', 'abc')
+      .expectValidationErrorContains('Invalid format')
+      .setField('@matchboxRPC', json.matchboxRPC)
+      .expectNoValidationError();
   },
 };
 
 module.exports = {
-  url: '',
-  commands: [matchboxPageCommands],
+  commands: [pageCommands],
   elements: {
-    matchboxHTTP: {
-      selector: 'input[id=matchboxHTTP]',
-    },
-    matchboxRPC: {
-      selector: 'input[id=matchboxRPC]',
-    },
-    nextStepp: {
-      selector:'//*[text()[contains(.,"Next Step")]]',
-      locateStrategy: 'xpath',
-    },
-    nextStep: {
-      selector:'//*[@class="withtooltip"]/button[not(contains(@class, "btn-primary disabled"))]',
-      locateStrategy: 'xpath',
-    },
+    matchboxHTTP: 'input#matchboxHTTP',
+    matchboxRPC: 'input#matchboxRPC',
   },
 };
