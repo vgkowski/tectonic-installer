@@ -47,7 +47,3 @@ variable "ign_tectonic_path_unit_id" {
   type    = "string"
   default = ""
 }
-
-variable "ign_iscsi_service_id" {
-  type = "string"
-}

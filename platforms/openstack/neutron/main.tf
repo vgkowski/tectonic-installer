@@ -1,5 +1,6 @@
 provider "openstack" {
   version = "1.1.0"
+  insecure = "${var.tectonic_openstack_insecure}"
 }
 
 data "template_file" "etcd_hostname_list" {
@@ -98,7 +99,6 @@ module "bootkube" {
 
   tectonic_networking = "${var.tectonic_networking}"
   calico_mtu          = "1480"
-  cluster_cidr        = "${var.tectonic_cluster_cidr}"
   pull_secret_path    = "${pathexpand(var.tectonic_pull_secret_path)}"
 }
 
@@ -303,4 +303,5 @@ module "dns" {
   worker_ip_addresses       = "${flatten(openstack_networking_port_v2.worker.*.all_fixed_ips)}"
   worker_public_ips         = "${openstack_networking_floatingip_v2.worker.*.address}"
   worker_public_ips_enabled = "${var.tectonic_openstack_disable_floatingip ? false : true}"
+  admin_email               = "${var.tectonic_admin_email}"
 }

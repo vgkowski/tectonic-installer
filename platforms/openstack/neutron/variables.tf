@@ -97,7 +97,7 @@ Note: Set either tectonic_openstack_image_name or tectonic_openstack_image_id.
 EOF
 }
 
-variable "tectonic_openstack_external_gateway_id" {
+variable "tectonic_openstack_external_gateway" {
   type = "string"
 
   description = <<EOF
@@ -159,5 +159,13 @@ variable "tectonic_openstack_disable_floatingip" {
 Disable floating ip assignments for k8s nodes.
 Warning: Enabling this option removes direct internet access,
 which prevents NodePorts from working.
+EOF
+}
+
+variable "tectonic_openstack_insecure" {
+  default = false
+
+  description = <<EOF
+Disable SSL verification of the openstack API host
 EOF
 }

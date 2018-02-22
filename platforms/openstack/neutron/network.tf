@@ -1,8 +1,8 @@
-resource "openstack_networking_router_v2" "router" {
+/*resource "openstack_networking_router_v2" "router" {
   name             = "${var.tectonic_cluster_name}_router"
   admin_state_up   = "true"
-  external_gateway = "${var.tectonic_openstack_external_gateway_id}"
-}
+  external_gateway = "${var.tectonic_openstack_external_gateway}"
+}*/
 
 resource "openstack_networking_network_v2" "network" {
   name           = "${var.tectonic_cluster_name}_network"
@@ -19,7 +19,7 @@ resource "openstack_networking_subnet_v2" "subnet" {
 }
 
 resource "openstack_networking_router_interface_v2" "interface" {
-  router_id = "${openstack_networking_router_v2.router.id}"
+  router_id = "78765b08-7065-4077-8367-c8756e2a193b"
   subnet_id = "${openstack_networking_subnet_v2.subnet.id}"
 }
 
