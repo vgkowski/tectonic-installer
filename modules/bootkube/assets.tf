@@ -95,6 +95,7 @@ data "template_file" "kco-config_yaml" {
     advertise_address = "${var.advertise_address}"
     cluster_cidr      = "${var.cluster_cidr}"
 
+    //etcd_list = "${formatlist("https://%s:2379", var.etcd_endpoints)}"
     etcd_servers = "${join(",", formatlist("https://%s:2379", var.etcd_endpoints))}"
 
     service_cidr = "${var.service_cidr}"

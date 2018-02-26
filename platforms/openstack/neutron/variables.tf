@@ -97,7 +97,7 @@ Note: Set either tectonic_openstack_image_name or tectonic_openstack_image_id.
 EOF
 }
 
-variable "tectonic_openstack_external_gateway" {
+variable "tectonic_openstack_external_gateway_id" {
   type = "string"
 
   description = <<EOF

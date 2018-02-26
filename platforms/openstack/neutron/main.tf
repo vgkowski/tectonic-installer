@@ -91,7 +91,7 @@ module "bootkube" {
   admin_cert_pem           = "${module.kube_certs.admin_cert_pem}"
   admin_key_pem            = "${module.kube_certs.admin_key_pem}"
 
-  etcd_endpoints = "${module.dns.etcd_a_nodes}"
+  etcd_endpoints = "${flatten(module.dns.etcd_a_nodes)}"
 
   master_count = "${var.tectonic_master_count}"
 

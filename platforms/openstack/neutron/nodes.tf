@@ -15,6 +15,8 @@ resource "openstack_compute_instance_v2" "etcd_node" {
   flavor_name = "${var.tectonic_openstack_etcd_flavor_name}"
   flavor_id   = "${var.tectonic_openstack_etcd_flavor_id}"
 
+  key_pair = "${module.secrets.core_public_key_openssh}"
+
   metadata {
     role = "etcd"
   }
@@ -47,6 +49,8 @@ resource "openstack_compute_instance_v2" "master_node" {
 
   flavor_name = "${var.tectonic_openstack_master_flavor_name}"
   flavor_id   = "${var.tectonic_openstack_master_flavor_id}"
+
+  //key_pair = "${module.secrets.core_public_key_openssh}"
 
   metadata {
     role = "master"
@@ -87,6 +91,8 @@ resource "openstack_compute_instance_v2" "worker_node" {
 
   flavor_name = "${var.tectonic_openstack_worker_flavor_name}"
   flavor_id   = "${var.tectonic_openstack_worker_flavor_id}"
+
+  //key_pair = "${module.secrets.core_public_key_openssh}"
 
   metadata {
     role = "worker"
